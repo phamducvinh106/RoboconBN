@@ -49,6 +49,9 @@ public final class MecanumDrive {
     /** Công suất tối đa cho phần xoay. */
     public static final double MAX_ROTATIONAL_POWER    = 0.45;
 
+    private double positionPowerLimit = MAX_TRANSLATIONAL_POWER;
+    private double headingPowerLimit = MAX_ROTATIONAL_POWER;
+
     // ============================================================
     //  State machine
     // ============================================================
@@ -471,6 +474,11 @@ public final class MecanumDrive {
     /**
      * Đat công suất raw cho 4 motor.
      */
+    public double getLastFlPower() { return lastFlPower; }
+    public double getLastFrPower() { return lastFrPower; }
+    public double getLastBlPower() { return lastBlPower; }
+    public double getLastBrPower() { return lastBrPower; }
+
     public void setRawPowers(
             double flPower,
             double frPower,
@@ -908,6 +916,14 @@ public final class MecanumDrive {
     public void setTolerance(double toleranceCm, double toleranceDeg) {
         this.toleranceCm  = toleranceCm;
         this.toleranceDeg = toleranceDeg;
+    }
+
+    public void setPowerLimits(double positionLimit, double headingLimit) {
+        positionPowerLimit = Math.max(0.0, Math.min(1.0, positionLimit));
+        headingPowerLimit = Math.max(0.0, Math.min(1.0, headingLimit));
+        xPid.setOutputLimits(-positionPowerLimit, positionPowerLimit);
+        yPid.setOutputLimits(-positionPowerLimit, positionPowerLimit);
+        hPid.setOutputLimits(-headingPowerLimit, headingPowerLimit);
     }
 
     public void setPositionGains(double kp, double ki, double kd) {

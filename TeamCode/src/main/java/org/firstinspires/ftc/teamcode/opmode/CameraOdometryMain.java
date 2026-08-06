@@ -1,19 +1,17 @@
 package org.firstinspires.ftc.teamcode.opmode;
 
-import org.firstinspires.ftc.teamcode.core.MultiTargetCamera;
+import org.firstinspires.ftc.teamcode.core.ColorContourCamera;
 import org.firstinspires.ftc.teamcode.core.TwoWheelOdometry;
 
 import com.qualcomm.hardware.rev.RevHubOrientationOnRobot;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 
-import java.util.List;
-
 @TeleOp(name = "Camera + Odometry Modular")
 public final class CameraOdometryMain extends LinearOpMode {
 
     private TwoWheelOdometry odometry;
-    private MultiTargetCamera camera;
+    private ColorContourCamera camera;
 
     @Override
     public void runOpMode() throws InterruptedException {
@@ -26,20 +24,16 @@ public final class CameraOdometryMain extends LinearOpMode {
                 RevHubOrientationOnRobot.UsbFacingDirection.FORWARD
         );
 
-        camera = new MultiTargetCamera(
+        camera = new ColorContourCamera(
                 hardwareMap,
                 "Webcam 1",
                 true,
-                // Put these files in TeamCode/src/main/assets/.
-                "target.png"
+                ColorContourCamera.Mode.LEFT_CENTERING
         );
         camera.startAsync();
 
         telemetry.addLine("Initialized. A = reset pose; Y = reset pose + yaw");
-        telemetry.addData("Templates loaded", camera.getLoadedTemplateCount());
-        for (String error : camera.getLoadErrors()) {
-            telemetry.addData("Template error", error);
-        }
+        telemetry.addData("Contour detector", "HSV/YCrCb + contours");
         telemetry.update();
 
         waitForStart();
@@ -75,59 +69,21 @@ public final class CameraOdometryMain extends LinearOpMode {
     }
 
     private void sendCameraTelemetry() {
-        MultiTargetCamera.CameraResult result = camera.getLatestResult();
-        long ageMs = camera.getLastSuccessfulDetectionMs() == 0
-                ? Long.MAX_VALUE
-                : System.currentTimeMillis()
-                - camera.getLastSuccessfulDetectionMs();
-        boolean fresh = result.isValid() && ageMs < 500;
+        ColorContourCamera.Result result = camera.getLatestResult();
+        boolean fresh = result.valid
+                && System.currentTimeMillis() - result.timestampMs < 500;
 
         telemetry.addLine("--- CAMERA ---");
         telemetry.addData("State", camera.getCameraState());
-        if ("ERROR".equals(camera.getCameraState())) {
-            telemetry.addData("Camera error", camera.getCameraErrorCode());
-        }
-        telemetry.addData("Templates", camera.getLoadedTemplateCount());
         telemetry.addData("Fresh target", fresh);
-        telemetry.addData("Detected objects", result.detections.size());
-        telemetry.addData("Camera FPS", "%.1f", camera.getFrameFps());
-        telemetry.addData("Processing FPS", "%.1f", camera.getProcessingFps());
+        telemetry.addData("Detected contours", result.contourCount);
         telemetry.addData("Processing ms", "%.1f", camera.getProcessingMs());
-
-        if (result.selected != null) {
-            telemetry.addData("Selected", result.selected.label);
-            telemetry.addData("dx px", "%.1f", result.dxPx);
-            telemetry.addData("dy px (down +)", "%.1f", result.dyPx);
-            telemetry.addData("Distance center px", "%.1f",
-                    result.selected.distanceToCenter);
-            telemetry.addData("Confidence", "%.2f",
-                    result.selected.confidence);
-            telemetry.addData("Matches / inliers", "%d / %d",
-                    result.selected.goodMatches,
-                    result.selected.inliers);
-        }
-
-        // --- Filter debug telemetry ---
-        telemetry.addLine("--- FILTER DEBUG ---");
-        telemetry.addData("rawDx", "%.1f", camera.getRawDx());
-        telemetry.addData("smoothedDx", "%.1f", camera.getSmoothedDx());
-        telemetry.addData("outlierStreak", camera.getOutlierStreak());
-        telemetry.addData("missStreak", camera.getMissStreak());
-        telemetry.addData("filterInit", camera.isFilterInitialized());
-        telemetry.addData("activeLabel", camera.getActiveLabel());
-
-        List<MultiTargetCamera.Detection> detections = result.detections;
-        for (int i = 0; i < detections.size(); i++) {
-            MultiTargetCamera.Detection detection = detections.get(i);
-            telemetry.addData(
-                    "Object " + i,
-                    "%s center=(%.0f,%.0f) conf=%.2f",
-                    detection.label,
-                    detection.centerX,
-                    detection.centerY,
-                    detection.confidence
-            );
-        }
+        telemetry.addData("Classification", result.valid ? result.label : "NONE");
+        telemetry.addData("Center", "%.0f, %.0f", result.centerX, result.centerY);
+        telemetry.addData("dx / dy px", "%.1f / %.1f", result.dxPx, result.dyPx);
+        telemetry.addData("Confidence", "%.2f", result.confidence);
+        telemetry.addData("Stable", "%d/5", result.stableFrames);
+        telemetry.addData("Fast centering", result.fastCentering);
     }
 
     private void sendOdometryTelemetry() {

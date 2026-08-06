@@ -24,13 +24,16 @@ public final class PidTuningOpMode extends LinearOpMode {
                 hardwareMap, "leftfront", "rightfront", "leftback", "rightback", localizer
         );
         drive.setTolerance(2.0, 2.0);
+        drive.setPowerLimits(0.1, 0.1);
         applyGains(drive);
 
         telemetry.addLine("PID TUNING");
         telemetry.addLine("A: forward target | B: strafe-right target | X: rotate target");
-        telemetry.addLine("D-pad up/down: position Kp +/- | left/right: heading Kp +/-");
+        telemetry.addLine("A: forward 50cm | B: strafe right 50cm | X: rotate 90deg");
+        telemetry.addLine("D-pad up/down: position Kp +/-");
+        telemetry.addLine("D-pad left/right: heading Kp +/-");
         telemetry.addLine("LB/RB: position Kd +/- | LT/RT: heading Kd +/-");
-        telemetry.addLine("Y: reset pose and gains");
+        telemetry.addLine("Y: reset pose/gains | 30% power limit");
         telemetry.update();
         waitForStart();
 
@@ -97,6 +100,7 @@ public final class PidTuningOpMode extends LinearOpMode {
                 telemetry.addData("pose", "X %.2f / Y %.2f / H %.2f", localizer.getX(), localizer.getY(), localizer.getHeadingDeg());
                 telemetry.addData("position PID", "Kp %.4f Ki %.4f Kd %.4f", positionKp, positionKi, positionKd);
                 telemetry.addData("heading PID", "Kp %.4f Ki %.4f Kd %.4f", headingKp, headingKi, headingKd);
+                telemetry.addData("power limit", "position 30%% / heading 30%%");
                 telemetry.addData("at target", drive.atTarget());
                 telemetry.update();
                 sleep(20);
