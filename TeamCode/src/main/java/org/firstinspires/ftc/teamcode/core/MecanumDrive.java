@@ -4,84 +4,31 @@ import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-
 /**
- * Mecanum 4-wheel drive.
+ * Mecanum drive — robot-centric mixing, field-centric manual drive, PID goToPosition.
  *
- * Tich hợp PID + Localizer để di chuyên chính xác đến toạ dô
- * (x, y, heading). Hồ trợ chay theo script JSON, có thê tích hợp
- * vào state machine bên ngoài thông qua getState().
+ * Conventions: field +X right, +Y forward; heading decreases counter-clockwise.
+ * Robot frame: +forward, +strafe left, +rotate CCW.
  *
- * Cách dùng tối thiêu:
- * <pre>{@code
- *   Localizer odo = new Localizer(hwMap, "rightfront", "leftfront", "imu", ...);
- *   MecanumDrive drive = new MecanumDrive(hwMap, "leftfront", "rightfront", "leftback", "rightback", odo);
- *
- *   while (opModeIsActive()) {
- *       odo.update();
- *       drive.update();
- *       if (drive.atTarget()) { ... }
- *   }
- * }</pre>
+ * Call {@code localizer.update()} before {@link #update()}.
  */
 public final class MecanumDrive {
 
-    // ============================================================
-    //  >>>  TUNE  <<<  PID gains & limits
-    // ============================================================
-
-    public static final double DEFAULT_POS_KP = 0.05;
+    public static final double DEFAULT_POS_KP = 0.031;
     public static final double DEFAULT_POS_KI = 0.012;
-    public static final double DEFAULT_POS_KD = 0.025;
-
-    public static final double DEFAULT_HEAD_KP = 0.04;
+    public static final double DEFAULT_POS_KD = 0.05;
+    public static final double DEFAULT_HEAD_KP = 0.031;
     public static final double DEFAULT_HEAD_KI = 0.006;
-    public static final double DEFAULT_HEAD_KD = 0.012;
+    public static final double DEFAULT_HEAD_KD = 0.05;
 
-    public static final double DEFAULT_TOLERANCE_CM  = 1.5;
+    public static final double DEFAULT_TOLERANCE_CM = 1.5;
     public static final double DEFAULT_TOLERANCE_DEG = 2.5;
-
-    /** Công suất tối đa cho phần tịnh tiến. */
     public static final double MAX_TRANSLATIONAL_POWER = 0.75;
-    /** Công suất tối đa cho phần xoay. */
-    public static final double MAX_ROTATIONAL_POWER    = 0.45;
+    public static final double MAX_ROTATIONAL_POWER = 0.45;
+    public static final double DEFAULT_SLEW_PER_LOOP = 0.08;
 
-    private double positionPowerLimit = MAX_TRANSLATIONAL_POWER;
-    private double headingPowerLimit = MAX_ROTATIONAL_POWER;
+    public enum DriveState { IDLE, MOVING, HOLDING }
 
-    // ============================================================
-    //  State machine
-    // ============================================================
-
-    public enum DriveState {
-        /** Không làm gì, motor dừng. */
-        IDLE,
-        /** Đang PID đến target. */
-        MOVING,
-        /** Đã dạt target, dang giữ vị trí. */
-        HOLDING,
-        /** Dang chay script JSON (tất cả các bước liên tục). */
-        SCRIPT_RUNNING,
-        /** Script dã hoàn thành. */
-        SCRIPT_DONE,
-        /** Dang chay một bước script duy nhất (chờ gọi executeNextStep). */
-        SCRIPT_STEP_RUNNING,
-        /** Bước script hiện tại dã hoàn thành, dợi lệnh tiếp theo. */
-        SCRIPT_STEP_DONE
-    }
-
-    // ============================================================
-    //  Internals
-    // ============================================================
-
-    /**
-     * Odometry source — tách interface de test duọc.
-     * Localizer dã có sẵn getX() / getY() / getHeadingDeg() nhung
-     * không implements interface này. Constructor sē wrap tự dộng.
-     */
     public interface OdometryProvider {
         double getX();
         double getY();
@@ -90,840 +37,147 @@ public final class MecanumDrive {
 
     private final DcMotorEx fl, fr, bl, br;
     private final OdometryProvider odometry;
-
-    private final PidController xPid;
-    private final PidController yPid;
-    private final PidController hPid;
+    private final PidController xPid, yPid, hPid;
 
     private DriveState state = DriveState.IDLE;
-
-    private double targetXCm;
-    private double targetYCm;
-    private double targetHeadingDeg;
-
-    private double toleranceCm  = DEFAULT_TOLERANCE_CM;
+    private double targetXCm, targetYCm, targetHeadingDeg;
+    private double toleranceCm = DEFAULT_TOLERANCE_CM;
     private double toleranceDeg = DEFAULT_TOLERANCE_DEG;
+    private double positionPowerLimit = MAX_TRANSLATIONAL_POWER;
+    private double headingPowerLimit = MAX_ROTATIONAL_POWER;
+    private double slewPerLoop = DEFAULT_SLEW_PER_LOOP;
 
-    // ---- Script ----
-    private final List<ScriptStep> scriptSteps = new ArrayList<>();
-    private int scriptIndex;
-    private long scriptStepStartMs;
+    private double cmdForward, cmdStrafe, cmdRotate;
+    private double lastFlPower, lastFrPower, lastBlPower, lastBrPower;
+    private double lastFieldErrorX, lastFieldErrorY, lastHeadingErrorDeg;
 
-    // ---- Debug (test inspection) ----
-    double lastFlPower, lastFrPower, lastBlPower, lastBrPower;
-    double lastRobotForward, lastRobotStrafe, lastRobotRotate;
-
-    // ============================================================
-    //  Constructors
-    // ============================================================
-
-    /**
-     * Production constructor — khơi tao motor tù HardwareMap.
-     *
-     * @param hwMap    HardwareMap cúa OpMode
-     * @param flName   tên motor front-left
-     * @param frName   tên motor front-right
-     * @param blName   tên motor back-left
-     * @param brName   tên motor back-right
-     * @param odometry Localizer dã khơi tao (cùng OpMode)
-     */
-    public MecanumDrive(
-            HardwareMap hwMap,
-            String flName,
-            String frName,
-            String blName,
-            String brName,
-            Localizer odometry
-    ) {
-        this(hwMap, flName, frName, blName, brName,
-                new OdometryProvider() {
-                    @Override
-                    public double getX() {
-                        return odometry.getX();
-                    }
-
-                    @Override
-                    public double getY() {
-                        return odometry.getY();
-                    }
-
-                    @Override
-                    public double getHeadingDeg() {
-                        return odometry.getHeadingDeg();
-                    }
-                });
+    public MecanumDrive(HardwareMap hwMap, String flName, String frName,
+                        String blName, String brName, Localizer odometry) {
+        this(hwMap, flName, frName, blName, brName, wrap(odometry));
     }
 
-    /**
-     * Constructor với OdometryProvider — de test offline.
-     */
-    public MecanumDrive(
-            HardwareMap hwMap,
-            String flName,
-            String frName,
-            String blName,
-            String brName,
-            OdometryProvider odometry
-    ) {
-        this.fl = hwMap.get(DcMotorEx.class, flName);
-        this.fr = hwMap.get(DcMotorEx.class, frName);
-        this.bl = hwMap.get(DcMotorEx.class, blName);
-        this.br = hwMap.get(DcMotorEx.class, brName);
-
-        fl.setDirection(DcMotorSimple.Direction.REVERSE);
-        fr.setDirection(DcMotorSimple.Direction.FORWARD);
-        bl.setDirection(DcMotorSimple.Direction.REVERSE);
-        br.setDirection(DcMotorSimple.Direction.FORWARD);
-
+    public MecanumDrive(HardwareMap hwMap, String flName, String frName,
+                        String blName, String brName, OdometryProvider odometry) {
+        fl = hwMap.get(DcMotorEx.class, flName);
+        fr = hwMap.get(DcMotorEx.class, frName);
+        bl = hwMap.get(DcMotorEx.class, blName);
+        br = hwMap.get(DcMotorEx.class, brName);
+        fl.setDirection(DcMotorSimple.Direction.FORWARD);
+        fr.setDirection(DcMotorSimple.Direction.REVERSE);
+        bl.setDirection(DcMotorSimple.Direction.FORWARD);
+        br.setDirection(DcMotorSimple.Direction.REVERSE);
         this.odometry = odometry;
-
-        xPid = new PidController(
-                DEFAULT_POS_KP,
-                DEFAULT_POS_KI,
-                DEFAULT_POS_KD
-        );
-
-        yPid = new PidController(
-                DEFAULT_POS_KP,
-                DEFAULT_POS_KI,
-                DEFAULT_POS_KD
-        );
-
-        hPid = new PidController(
-                DEFAULT_HEAD_KP,
-                DEFAULT_HEAD_KI,
-                DEFAULT_HEAD_KD
-        );
-
-        xPid.setOutputLimits(
-                -MAX_TRANSLATIONAL_POWER,
-                MAX_TRANSLATIONAL_POWER
-        );
-
-        yPid.setOutputLimits(
-                -MAX_TRANSLATIONAL_POWER,
-                MAX_TRANSLATIONAL_POWER
-        );
-
-        hPid.setOutputLimits(
-                -MAX_ROTATIONAL_POWER,
-                MAX_ROTATIONAL_POWER
-        );
+        xPid = newPid(DEFAULT_POS_KP, DEFAULT_POS_KI, DEFAULT_POS_KD, MAX_TRANSLATIONAL_POWER);
+        yPid = newPid(DEFAULT_POS_KP, DEFAULT_POS_KI, DEFAULT_POS_KD, MAX_TRANSLATIONAL_POWER);
+        hPid = newPid(DEFAULT_HEAD_KP, DEFAULT_HEAD_KI, DEFAULT_HEAD_KD, MAX_ROTATIONAL_POWER);
     }
 
-    /**
-     * Test constructor — không can FTC hardware.
-     * Chi dùng trong offline test.
-     */
-    MecanumDrive(OdometryProvider odometry) {
-        this.fl = null;
-        this.fr = null;
-        this.bl = null;
-        this.br = null;
+    /** No motors — offline simulation only. */
+    public static MecanumDrive forTest(OdometryProvider odometry) {
+        return new MecanumDrive(odometry);
+    }
 
+    private MecanumDrive(OdometryProvider odometry) {
+        fl = fr = bl = br = null;
         this.odometry = odometry;
-
-        xPid = new PidController(
-                DEFAULT_POS_KP,
-                DEFAULT_POS_KI,
-                DEFAULT_POS_KD
-        );
-
-        yPid = new PidController(
-                DEFAULT_POS_KP,
-                DEFAULT_POS_KI,
-                DEFAULT_POS_KD
-        );
-
-        hPid = new PidController(
-                DEFAULT_HEAD_KP,
-                DEFAULT_HEAD_KI,
-                DEFAULT_HEAD_KD
-        );
-
-        xPid.setOutputLimits(
-                -MAX_TRANSLATIONAL_POWER,
-                MAX_TRANSLATIONAL_POWER
-        );
-
-        yPid.setOutputLimits(
-                -MAX_TRANSLATIONAL_POWER,
-                MAX_TRANSLATIONAL_POWER
-        );
-
-        hPid.setOutputLimits(
-                -MAX_ROTATIONAL_POWER,
-                MAX_ROTATIONAL_POWER
-        );
+        xPid = newPid(DEFAULT_POS_KP, DEFAULT_POS_KI, DEFAULT_POS_KD, MAX_TRANSLATIONAL_POWER);
+        yPid = newPid(DEFAULT_POS_KP, DEFAULT_POS_KI, DEFAULT_POS_KD, MAX_TRANSLATIONAL_POWER);
+        hPid = newPid(DEFAULT_HEAD_KP, DEFAULT_HEAD_KI, DEFAULT_HEAD_KD, MAX_ROTATIONAL_POWER);
     }
 
-    // ============================================================
-    //  update() — gọi mồi vòng lặp
-    // ============================================================
-
-    /**
-     * Gọi mồi vòng lặp. Tính PID, cap nhật motor, tiến state machine.
-     * Phai gọi {@code odometry.update()} TRƯỚC khi goi hàm này.
-     */
     public void update() {
-        long nowMs = currentTimeMs();
-
         switch (state) {
             case MOVING:
             case HOLDING:
-                updatePositionControl(nowMs);
+                updatePositionControl();
                 break;
-
-            case SCRIPT_RUNNING:
-                updateScript(nowMs);
-                break;
-
-            case SCRIPT_STEP_RUNNING:
-                updateScriptStep(nowMs);
-                break;
-
             default:
                 stopMotors();
                 break;
         }
     }
 
-    /**
-     * PID diêu khiên vị trí.
-     */
-    private void updatePositionControl(long nowMs) {
-        double currentX   = odometry.getX();
-        double currentY   = odometry.getY();
-        double currentDeg = odometry.getHeadingDeg();
-
-        // PID raw outputs trong frame robot
-        double robotStrafe  = xPid.calculate(targetXCm,  currentX);
-        double robotForward = yPid.calculate(targetYCm,  currentY);
-
-        double rotate = hPid.calculate(
-                targetHeadingDeg,
-                currentDeg
-        );
-
-        /*
-         * Transform tu frame robot sang field-centric
-         * de robot giữ trajectory dúng ngay cả khi dang xoay.
-         */
-        double headingRad = Math.toRadians(currentDeg);
-        double cos = Math.cos(headingRad);
-        double sin = Math.sin(headingRad);
-
-        double fieldForward =
-                robotForward * cos + robotStrafe * sin;
-
-        double fieldStrafe =
-                -robotForward * sin + robotStrafe * cos;
-
-        lastRobotForward = fieldForward;
-        lastRobotStrafe  = fieldStrafe;
-        lastRobotRotate  = rotate;
-
-        applyMecanumPowers(
-                fieldForward,
-                fieldStrafe,
-                rotate
-        );
-
-        // Chuyên trạng thái
-        if (xPid.atSetpoint(toleranceCm)
-                && yPid.atSetpoint(toleranceCm)
-                && hPid.atSetpoint(toleranceDeg)) {
-            state = DriveState.HOLDING;
-        } else if (state == DriveState.HOLDING) {
-            // Ra khói target → quay lai MOVING
-            state = DriveState.MOVING;
-        }
+    public void goToPosition(double xCm, double yCm, double headingDeg) {
+        requireFinite(xCm, "xCm");
+        requireFinite(yCm, "yCm");
+        requireFinite(headingDeg, "headingDeg");
+        targetXCm = xCm;
+        targetYCm = yCm;
+        targetHeadingDeg = headingDeg;
+        xPid.reset();
+        yPid.reset();
+        hPid.reset();
+        cmdForward = cmdStrafe = cmdRotate = 0.0;
+        state = DriveState.MOVING;
     }
 
-    /**
-     * Tiến một bước script.
-     */
-    private void updateScript(long nowMs) {
-        if (scriptIndex >= scriptSteps.size()) {
-            state = DriveState.SCRIPT_DONE;
-            stopMotors();
-            return;
-        }
-
-        double currentX   = odometry.getX();
-        double currentY   = odometry.getY();
-        double currentDeg = odometry.getHeadingDeg();
-
-        ScriptStep step = scriptSteps.get(scriptIndex);
-
-        double robotStrafe  = xPid.calculate(step.x, currentX);
-        double robotForward = yPid.calculate(step.y, currentY);
-        double rotate       = hPid.calculate(step.h, currentDeg);
-
-        double headingRad = Math.toRadians(currentDeg);
-        double cos = Math.cos(headingRad);
-        double sin = Math.sin(headingRad);
-
-        double fieldForward =
-                robotForward * cos + robotStrafe * sin;
-
-        double fieldStrafe =
-                -robotForward * sin + robotStrafe * cos;
-
-        lastRobotForward = fieldForward;
-        lastRobotStrafe  = fieldStrafe;
-        lastRobotRotate  = rotate;
-
-        applyMecanumPowers(fieldForward, fieldStrafe, rotate);
-
-        boolean atTarget = xPid.atSetpoint(toleranceCm)
-                && yPid.atSetpoint(toleranceCm)
-                && hPid.atSetpoint(toleranceDeg);
-
-        long elapsed = nowMs - scriptStepStartMs;
-
-        if (atTarget || elapsed >= step.timeoutMs) {
-            scriptIndex++;
-            scriptStepStartMs = nowMs;
-
-            xPid.reset();
-            yPid.reset();
-            hPid.reset();
-        }
+    public void holdPosition() {
+        goToPosition(odometry.getX(), odometry.getY(), odometry.getHeadingDeg());
     }
 
-    // ============================================================
-    //  Mecanum kinematics (inverse)
-    // ============================================================
-
-    /**
-     * Ap dung inverse kinematics cho mecanum.
-     *
-     * Commands use robot frame: forward, left, counter-clockwise.
-     * Motor directions are configured once in the constructor; kinematics stay standard.
-     * fl = forward + strafe + rotate
-     * fr = forward - strafe - rotate
-     * bl = forward - strafe + rotate
-     * br = forward + strafe - rotate
-     *
-     * Dầu ra duọc chuẩn hoá nếu vượt [-1, 1] dê giữ tỉ lệ.
-     */
-    private void applyMecanumPowers(
-            double forward,
-            double strafe,
-            double rotate
-    ) {
-        double flPower = forward + strafe + rotate;
-        double frPower = forward - strafe - rotate;
-        double blPower = forward - strafe + rotate;
-        double brPower = forward + strafe - rotate;
-
-        // Normalize
-        double maxAbs = Math.max(
-                Math.max(Math.abs(flPower), Math.abs(frPower)),
-                Math.max(Math.abs(blPower), Math.abs(brPower))
-        );
-
-        if (maxAbs > 1.0) {
-            flPower /= maxAbs;
-            frPower /= maxAbs;
-            blPower /= maxAbs;
-            brPower /= maxAbs;
-        }
-
-        lastFlPower = flPower;
-        lastFrPower = frPower;
-        lastBlPower = blPower;
-        lastBrPower = brPower;
-
-        if (fl != null) {
-            fl.setPower(flPower);
-            fr.setPower(frPower);
-            bl.setPower(blPower);
-            br.setPower(brPower);
-        }
-    }
-
-    /**
-     * Overload dành cho raw motor powers — bỏ qua kinematics,
-     * gán trực tiếp fl/fr/bl/br.
-     */
-    private void applyMecanumPowers(
-            double flPower,
-            double frPower,
-            double blPower,
-            double brPower
-    ) {
-        lastFlPower = flPower;
-        lastFrPower = frPower;
-        lastBlPower = blPower;
-        lastBrPower = brPower;
-
-        if (fl != null) {
-            fl.setPower(flPower);
-            fr.setPower(frPower);
-            bl.setPower(blPower);
-            br.setPower(brPower);
-        }
-    }
-
-    // ============================================================
-    //  Điêu khiên trục tiếp (velocity mode)
-    // ============================================================
-
-    /**
-     * Đat công suất raw cho 4 motor.
-     */
-    public double getLastFlPower() { return lastFlPower; }
-    public double getLastFrPower() { return lastFrPower; }
-    public double getLastBlPower() { return lastBlPower; }
-    public double getLastBrPower() { return lastBrPower; }
-
-    public void setRawPowers(
-            double flPower,
-            double frPower,
-            double blPower,
-            double brPower
-    ) {
-        state = DriveState.IDLE;
-        applyMecanumPowers(flPower, frPower, blPower, brPower);
-    }
-
-    /**
-     * Điêu khiên field-centric.
-     *
-     * @param fieldForward  tiến/lùi so với sân (-1..1)
-     * @param fieldStrafe   trái/phải so với sân (-1..1)
-     * @param rotate        xoay (-1..1)
-     */
     public void driveRobotCentric(double forward, double strafe, double rotate) {
         state = DriveState.IDLE;
-        lastRobotForward = forward;
-        lastRobotStrafe = strafe;
-        lastRobotRotate = rotate;
-        applyMecanumPowers(forward, strafe, rotate);
+        cmdForward = forward;
+        cmdStrafe = strafe;
+        cmdRotate = rotate;
+        applyRobotFrame(forward, strafe, rotate);
     }
 
-    public void driveFieldCentric(
-            double fieldForward,
-            double fieldStrafe,
-            double rotate
-    ) {
+    public void driveFieldCentric(double fieldForward, double fieldStrafe, double rotate) {
         state = DriveState.IDLE;
-
-        double headingRad =
-                Math.toRadians(odometry.getHeadingDeg());
-
-        double cos = Math.cos(headingRad);
-        double sin = Math.sin(headingRad);
-
-        // Robot powers from field-centric input
-        double robotForward =
-                fieldForward * cos - fieldStrafe * sin;
-
-        double robotStrafe =
-                fieldForward * sin + fieldStrafe * cos;
-
-        lastRobotForward = robotForward;
-        lastRobotStrafe  = robotStrafe;
-        lastRobotRotate  = rotate;
-
-        applyMecanumPowers(robotForward, robotStrafe, rotate);
+        double[] robot = fieldToRobot(fieldForward, fieldStrafe, odometry.getHeadingDeg());
+        cmdForward = robot[0];
+        cmdStrafe = robot[1];
+        cmdRotate = rotate;
+        applyRobotFrame(robot[0], robot[1], rotate);
     }
 
-    // ============================================================
-    //  PID diêu khiên vị trí
-    // ============================================================
-
-    /**
-     * Băt dầu di chuyên PID dên (x, y, headingDeg).
-     * Gọi một lân dê băt dầu, sau dó gọi update() mồi vòng lap.
-     */
-    public void goToPosition(
-            double xCm,
-            double yCm,
-            double headingDeg
-    ) {
-        targetXCm        = xCm;
-        targetYCm        = yCm;
-        targetHeadingDeg = headingDeg;
-
-        xPid.reset();
-        yPid.reset();
-        hPid.reset();
-
-        state = DriveState.MOVING;
+    public void setRawPowers(double flPower, double frPower, double blPower, double brPower) {
+        state = DriveState.IDLE;
+        cmdForward = cmdStrafe = cmdRotate = 0.0;
+        setMotorPowers(flPower, frPower, blPower, brPower);
     }
 
-    /**
-     * Giữ vị trí hiện tai.
-     */
-    public void holdPosition() {
-        targetXCm        = odometry.getX();
-        targetYCm        = odometry.getY();
-        targetHeadingDeg = odometry.getHeadingDeg();
-
-        xPid.reset();
-        yPid.reset();
-        hPid.reset();
-
-        state = DriveState.MOVING;
-    }
-
-    // ============================================================
-    //  Script JSON
-    // ============================================================
-
-    /**
-     * Nap script JSON.
-     *
-     * Format:
-     * <pre>
-     * [
-     *   {"x": 50, "y": 0,  "h": 90, "timeout": 3000},
-     *   {"x": 50, "y": 50, "h": 0,  "timeout": 3000}
-     * ]
-     * </pre>
-     *
-     * x, y: cm.  h: degrees.  timeout: ms.
-     */
-    public void loadScript(String json) {
-        scriptSteps.clear();
-        scriptIndex = 0;
-
-        if (json == null || json.trim().isEmpty()) {
-            return;
-        }
-
-        /*
-         * Parser don gian, không phu thuộc org.json
-         * de offline test chay duọc trên PC không cần Android SDK.
-         */
-        String trimmed = json.trim();
-
-        if (!trimmed.startsWith("[")) {
-            return;
-        }
-
-        // Split by "},{" to get individual objects
-        String inner = trimmed.substring(1, trimmed.length() - 1).trim();
-
-        if (inner.isEmpty()) {
-            return;
-        }
-
-        // Find object boundaries
-        int depth = 0;
-        int start  = -1;
-
-        for (int i = 0; i < inner.length(); i++) {
-            char c = inner.charAt(i);
-
-            if (c == '{') {
-                if (depth == 0) start = i;
-                depth++;
-            } else if (c == '}') {
-                depth--;
-                if (depth == 0 && start >= 0) {
-                    parseStep(inner.substring(start, i + 1));
-                }
-            }
-        }
-    }
-
-    private void parseStep(String object) {
-        double x = 0, y = 0, h = 0;
-        long timeout = 5000;
-
-        String inner = object.substring(1, object.length() - 1);
-
-        // Split fields by comma outside quotes
-        List<String> fields = splitJsonFields(inner);
-
-        for (String field : fields) {
-            int colon = field.indexOf(':');
-
-            if (colon < 0) continue;
-
-            String key = field.substring(0, colon)
-                    .replace("\"", "").trim();
-
-            String value = field.substring(colon + 1)
-                    .replace("\"", "").trim();
-
-            try {
-                switch (key) {
-                    case "x":       x       = Double.parseDouble(value); break;
-                    case "y":       y       = Double.parseDouble(value); break;
-                    case "h":       h       = Double.parseDouble(value); break;
-                    case "timeout": timeout = Long.parseLong(value);     break;
-                }
-            } catch (NumberFormatException ignored) {
-            }
-        }
-
-        scriptSteps.add(new ScriptStep(x, y, h, timeout));
-    }
-
-    private List<String> splitJsonFields(String inner) {
-        List<String> result = new ArrayList<>();
-
-        int start = 0;
-        int braceDepth = 0;
-        boolean inString = false;
-
-        for (int i = 0; i < inner.length(); i++) {
-            char c = inner.charAt(i);
-
-            if (c == '"' && (i == 0 || inner.charAt(i - 1) != '\\')) {
-                inString = !inString;
-            }
-
-            if (!inString) {
-                if (c == '{') braceDepth++;
-                if (c == '}') braceDepth--;
-            }
-
-            if (!inString && braceDepth == 0 && c == ',') {
-                result.add(inner.substring(start, i).trim());
-                start = i + 1;
-            }
-        }
-
-        if (start < inner.length()) {
-            result.add(inner.substring(start).trim());
-        }
-
-        return result;
-    }
-
-    /** Bắt dầu chay script. */
-    public void startScript() {
-        if (scriptSteps.isEmpty()) {
-            state = DriveState.SCRIPT_DONE;
-            return;
-        }
-
-        scriptIndex        = 0;
-        scriptStepStartMs  = currentTimeMs();
-
-        xPid.reset();
-        yPid.reset();
-        hPid.reset();
-
-        state = DriveState.SCRIPT_RUNNING;
-    }
-
-    /** Dừng script giữa chừng. */
-    public void abortScript() {
-        scriptSteps.clear();
-        scriptIndex = 0;
-        stop();
-    }
-
-    /**
-     * Chạy bước tiếp theo trong script. Mỗi lần gọi một bước.
-     *
-     * Gọi update() mỗi vòng lặp sau khi gọi hàm này. Khi bước hoàn
-     * thành (dạt target hoặc timeout), state chuyển về
-     * SCRIPT_STEP_DONE. Gọi executeNextStep() thêm lần nữa dể
-     * chạy bước kế tiếp.
-     *
-     * @return true nếu có bước dể chạy, false nếu dã hết script
-     */
-    public boolean executeNextStep() {
-        if (scriptSteps.isEmpty()
-                || scriptIndex >= scriptSteps.size()) {
-            state = DriveState.SCRIPT_DONE;
-            return false;
-        }
-
-        scriptStepStartMs  = currentTimeMs();
-
-        xPid.reset();
-        yPid.reset();
-        hPid.reset();
-
-        state = DriveState.SCRIPT_STEP_RUNNING;
-        return true;
-    }
-
-    /**
-     * Chạy một bước script cho đến khi hoàn thành (blocking style).
-     *
-     * Cảnh báo: hàm này chạy vòng lặp nội bộ (không có telemetry).
-     * Chi nên dùng trong Autonomous nếu OpMode không cần telemetry.
-     *
-     * @return true nếu bước hoàn thành, false nếu hết script
-     */
-    public boolean executeNextStepBlocking() {
-        if (!executeNextStep()) {
-            return false;
-        }
-
-        while (state == DriveState.SCRIPT_STEP_RUNNING) {
-            update();
-        }
-
-        return state != DriveState.SCRIPT_DONE;
-    }
-
-    /**
-     * Tiến một bước script riêng lẻ — không tự dộng chuyển
-     * sang bước tiếp theo.
-     */
-    private void updateScriptStep(long nowMs) {
-        if (scriptIndex >= scriptSteps.size()) {
-            state = DriveState.SCRIPT_DONE;
-            stopMotors();
-            return;
-        }
-
-        double currentX   = odometry.getX();
-        double currentY   = odometry.getY();
-        double currentDeg = odometry.getHeadingDeg();
-
-        ScriptStep step = scriptSteps.get(scriptIndex);
-
-        double robotStrafe  = xPid.calculate(step.x, currentX);
-        double robotForward = yPid.calculate(step.y, currentY);
-        double rotate       = hPid.calculate(step.h, currentDeg);
-
-        double headingRad = Math.toRadians(currentDeg);
-        double cos = Math.cos(headingRad);
-        double sin = Math.sin(headingRad);
-
-        double fieldForward =
-                robotForward * cos + robotStrafe * sin;
-
-        double fieldStrafe =
-                -robotForward * sin + robotStrafe * cos;
-
-        lastRobotForward = fieldForward;
-        lastRobotStrafe  = fieldStrafe;
-        lastRobotRotate  = rotate;
-
-        applyMecanumPowers(fieldForward, fieldStrafe, rotate);
-
-        boolean atTarget = xPid.atSetpoint(toleranceCm)
-                && yPid.atSetpoint(toleranceCm)
-                && hPid.atSetpoint(toleranceDeg);
-
-        long elapsed = nowMs - scriptStepStartMs;
-
-        if (atTarget || elapsed >= step.timeoutMs) {
-            // Đánh dấu bước hiện tại hoàn thành, dợi lệnh tiếp theo
-            scriptIndex++;
-
-            xPid.reset();
-            yPid.reset();
-            hPid.reset();
-
-            if (scriptIndex >= scriptSteps.size()) {
-                state = DriveState.SCRIPT_DONE;
-                stopMotors();
-            } else {
-                state = DriveState.SCRIPT_STEP_DONE;
-                stopMotors();
-            }
-        }
-    }
-
-    /** Bước script hiện tại (0-based). */
-    public int getScriptStepIndex() {
-        return scriptIndex;
-    }
-
-    /** Tổng số bước trong script. */
-    public int getScriptStepCount() {
-        return scriptSteps.size();
-    }
-
-    // ============================================================
-    //  Control
-    // ============================================================
-
-    /** Dùng mọi motor, trở về IDLE. */
     public void stop() {
         state = DriveState.IDLE;
+        cmdForward = cmdStrafe = cmdRotate = 0.0;
         stopMotors();
     }
 
-    private void stopMotors() {
-        lastFlPower = 0;
-        lastFrPower = 0;
-        lastBlPower = 0;
-        lastBrPower = 0;
+    public DriveState getState() { return state; }
+    public boolean atTarget() { return state == DriveState.HOLDING; }
 
-        if (fl != null) {
-            fl.setPower(0);
-            fr.setPower(0);
-            bl.setPower(0);
-            br.setPower(0);
-        }
+    public boolean atTarget(double tolCm, double tolDeg) {
+        if (state != DriveState.MOVING && state != DriveState.HOLDING) return false;
+        return Math.abs(odometry.getX() - targetXCm) <= tolCm
+                && Math.abs(odometry.getY() - targetYCm) <= tolCm
+                && Math.abs(wrapHeadingError(targetHeadingDeg - odometry.getHeadingDeg())) <= tolDeg;
     }
 
-    // ============================================================
-    //  Queries
-    // ============================================================
-
-    public DriveState getState() {
-        return state;
-    }
-
-    /** Dã dến target (POSITION mode) hoặc script current step? */
-    public boolean atTarget() {
-        return state == DriveState.HOLDING;
-    }
-
-    public boolean atTarget(double toleranceCm, double toleranceDeg) {
-        if (state != DriveState.MOVING && state != DriveState.HOLDING) {
-            return false;
-        }
-
-        double dx = Math.abs(odometry.getX() - targetXCm);
-        double dy = Math.abs(odometry.getY() - targetYCm);
-        double dh = Math.abs(
-                angleDiff(
-                        odometry.getHeadingDeg(),
-                        targetHeadingDeg
-                )
-        );
-
-        return dx <= toleranceCm
-                && dy <= toleranceCm
-                && dh <= toleranceDeg;
-    }
-
-    /** Lôi toạ dô còn lai (Euclidean). */
     public double getRemainingError() {
-        if (state != DriveState.MOVING
-                && state != DriveState.HOLDING
-                && state != DriveState.SCRIPT_RUNNING) {
-            return 0.0;
-        }
-
         double dx = odometry.getX() - targetXCm;
         double dy = odometry.getY() - targetYCm;
-
-        return Math.sqrt(dx * dx + dy * dy);
+        return Math.hypot(dx, dy);
     }
 
-    // ============================================================
-    //  Tuning
-    // ============================================================
-
     public void setTolerance(double toleranceCm, double toleranceDeg) {
-        this.toleranceCm  = toleranceCm;
+        requirePositiveFinite(toleranceCm, "toleranceCm");
+        requirePositiveFinite(toleranceDeg, "toleranceDeg");
+        this.toleranceCm = toleranceCm;
         this.toleranceDeg = toleranceDeg;
     }
 
     public void setPowerLimits(double positionLimit, double headingLimit) {
-        positionPowerLimit = Math.max(0.0, Math.min(1.0, positionLimit));
-        headingPowerLimit = Math.max(0.0, Math.min(1.0, headingLimit));
+        positionPowerLimit = clamp01(positionLimit);
+        headingPowerLimit = clamp01(headingLimit);
         xPid.setOutputLimits(-positionPowerLimit, positionPowerLimit);
         yPid.setOutputLimits(-positionPowerLimit, positionPowerLimit);
         hPid.setOutputLimits(-headingPowerLimit, headingPowerLimit);
+    }
+
+    public void setSlewPerLoop(double slew) {
+        if (!Double.isFinite(slew) || slew <= 0) throw new IllegalArgumentException("slew");
+        slewPerLoop = slew;
     }
 
     public void setPositionGains(double kp, double ki, double kd) {
@@ -935,43 +189,155 @@ public final class MecanumDrive {
         hPid.setGains(kp, ki, kd);
     }
 
-    public PidController getXPid() { return xPid; }
-    public PidController getYPid() { return yPid; }
-    public PidController getHPid() { return hPid; }
+    public double getLastFlPower() { return lastFlPower; }
+    public double getLastFrPower() { return lastFrPower; }
+    public double getLastBlPower() { return lastBlPower; }
+    public double getLastBrPower() { return lastBrPower; }
+    public double getLastRobotForward() { return cmdForward; }
+    public double getLastRobotStrafe() { return cmdStrafe; }
+    public double getLastRobotRotate() { return cmdRotate; }
+    public double getLastFieldErrorX() { return lastFieldErrorX; }
+    public double getLastFieldErrorY() { return lastFieldErrorY; }
+    public double getLastHeadingErrorDeg() { return lastHeadingErrorDeg; }
 
-    public OdometryProvider getOdometryProvider() {
-        return odometry;
+    // --- pure math (offline checks) ---
+
+    public static double[] mixMecanum(double forward, double strafe, double rotate) {
+        return normalizePowers(
+                forward + strafe + rotate,
+                forward - strafe - rotate,
+                forward - strafe + rotate,
+                forward + strafe - rotate);
     }
 
-    // ============================================================
-    //  Helpers
-    // ============================================================
-
-    private static double angleDiff(double a, double b) {
-        double d = Math.abs(a - b) % 360.0;
-        return d > 180.0 ? 360.0 - d : d;
+    /** field +Y forward, +X right → robot forward/strafe-left. */
+    public static double[] fieldToRobot(double fieldForward, double fieldStrafe, double headingDeg) {
+        double rad = Math.toRadians(headingDeg);
+        double cos = Math.cos(rad);
+        double sin = Math.sin(rad);
+        return new double[]{
+                fieldForward * cos - fieldStrafe * sin,
+                fieldForward * sin + fieldStrafe * cos
+        };
     }
 
-    private static long currentTimeMs() {
-        return System.currentTimeMillis();
+    public static double wrapHeadingError(double errorDeg) {
+        double e = errorDeg % 360.0;
+        if (e > 180.0) e -= 360.0;
+        if (e < -180.0) e += 360.0;
+        return e;
     }
 
-    // ============================================================
-    //  Inner types
-    // ============================================================
-
-    private static final class ScriptStep {
-
-        final double x;
-        final double y;
-        final double h;
-        final long   timeoutMs;
-
-        ScriptStep(double x, double y, double h, long timeoutMs) {
-            this.x = x;
-            this.y = y;
-            this.h = h;
-            this.timeoutMs = timeoutMs;
+    public static double[] normalizePowers(double fl, double fr, double bl, double br) {
+        double max = Math.max(Math.max(Math.abs(fl), Math.abs(fr)),
+                Math.max(Math.abs(bl), Math.abs(br)));
+        if (max > 1.0) {
+            fl /= max;
+            fr /= max;
+            bl /= max;
+            br /= max;
         }
+        return new double[]{fl, fr, bl, br};
+    }
+
+    private void updatePositionControl() {
+        double currentX = odometry.getX();
+        double currentY = odometry.getY();
+        double currentHeading = odometry.getHeadingDeg();
+
+        lastFieldErrorX = targetXCm - currentX;
+        lastFieldErrorY = targetYCm - currentY;
+        lastHeadingErrorDeg = wrapHeadingError(targetHeadingDeg - currentHeading);
+
+        double fieldStrafePower = xPid.calculate(targetXCm, currentX);
+        double fieldForwardPower = yPid.calculate(targetYCm, currentY);
+        double[] robot = fieldToRobot(fieldForwardPower, fieldStrafePower, currentHeading);
+
+        double rotatePower = -hPid.calculate(
+                currentHeading + lastHeadingErrorDeg,
+                currentHeading);
+        if (Math.abs(lastHeadingErrorDeg) <= toleranceDeg) {
+            rotatePower = 0.0;
+            hPid.reset();
+        }
+        if (state == DriveState.HOLDING) {
+            rotatePower = 0.0;
+        }
+        rotatePower = Math.max(-headingPowerLimit, Math.min(headingPowerLimit, rotatePower));
+
+        // Wrapped heading error controls shortest turn; PID measurement stays continuous.
+        // This avoids a false derivative spike when heading crosses +/-180 degrees.
+        
+
+        cmdForward = slew(cmdForward, robot[0], slewPerLoop);
+        cmdStrafe = slew(cmdStrafe, robot[1], slewPerLoop);
+        cmdRotate = slew(cmdRotate, rotatePower, slewPerLoop);
+
+        applyRobotFrame(cmdForward, cmdStrafe, cmdRotate);
+
+        boolean atPose = xPid.atSetpoint(toleranceCm)
+                && yPid.atSetpoint(toleranceCm)
+                && Math.abs(lastHeadingErrorDeg) <= toleranceDeg;
+
+        if (atPose) {
+            state = DriveState.HOLDING;
+        } else if (state == DriveState.HOLDING) {
+            state = DriveState.MOVING;
+        }
+    }
+
+    private void applyRobotFrame(double forward, double strafe, double rotate) {
+        double[] p = mixMecanum(forward, strafe, rotate);
+        setMotorPowers(p[0], p[1], p[2], p[3]);
+    }
+
+    private void setMotorPowers(double flPower, double frPower, double blPower, double brPower) {
+        lastFlPower = flPower;
+        lastFrPower = frPower;
+        lastBlPower = blPower;
+        lastBrPower = brPower;
+        if (fl != null) {
+            fl.setPower(flPower);
+            fr.setPower(frPower);
+            bl.setPower(blPower);
+            br.setPower(brPower);
+        }
+    }
+
+    private void stopMotors() {
+        setMotorPowers(0, 0, 0, 0);
+    }
+
+    private static double slew(double current, double target, double maxDelta) {
+        double d = target - current;
+        if (d > maxDelta) return current + maxDelta;
+        if (d < -maxDelta) return current - maxDelta;
+        return target;
+    }
+
+    private static PidController newPid(double kp, double ki, double kd, double limit) {
+        PidController pid = new PidController(kp, ki, kd);
+        pid.setOutputLimits(-limit, limit);
+        return pid;
+    }
+
+    private static OdometryProvider wrap(Localizer localizer) {
+        return new OdometryProvider() {
+            @Override public double getX() { return localizer.getX(); }
+            @Override public double getY() { return localizer.getY(); }
+            @Override public double getHeadingDeg() { return localizer.getHeadingDeg(); }
+        };
+    }
+
+    private static void requireFinite(double v, String name) {
+        if (!Double.isFinite(v)) throw new IllegalArgumentException(name);
+    }
+
+    private static void requirePositiveFinite(double v, String name) {
+        if (!Double.isFinite(v) || v <= 0) throw new IllegalArgumentException(name);
+    }
+
+    private static double clamp01(double v) {
+        return Math.max(0.0, Math.min(1.0, v));
     }
 }

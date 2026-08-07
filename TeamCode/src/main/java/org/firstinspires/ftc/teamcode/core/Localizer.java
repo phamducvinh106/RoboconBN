@@ -13,14 +13,14 @@ public final class Localizer {
     //  >>>  TUNE  <<<  Các thông số cần chỉnh cho từng robot
     // ============================================================
 
-    // --- Đầu đo encoder ---
-    private static final double WHEEL_DIAMETER_CM    = 4.8;      // [m] đường kính bánh xe odometry
-    private static final double TICKS_PER_REV        = 2000.0;   // [m] số tick trên 1 vòng quay
-    private static final double PARALLEL_ENCODER_SIGN     = -1.0; // [m] chiều encoder song song (+1 / -1)
-    private static final double PERPENDICULAR_ENCODER_SIGN = -1.0; // [m] chiều encoder vuông góc (+1 / -1)
+    // --- goBILDA 4-Bar Odometry Pod (3110-0001-0002) ---
+    private static final double WHEEL_DIAMETER_CM    = 3.2;      // 32 mm omni wheel
+    private static final double TICKS_PER_REV        = 2000.0;   // 2000 countable events/rev
+    private static final double PARALLEL_ENCODER_SIGN     = 1.0; // [m] chiều encoder song song (+1 / -1)
+    private static final double PERPENDICULAR_ENCODER_SIGN = 1.0; // [m] chiều encoder vuông góc (+1 / -1)
     private static final double HEADING_SIGN               =  1.0; // [m] chiều IMU heading (+1 / -1)
 
-    // --- Vị trí đặt dead-wheel so với tâm robot ---
+    // --- Vị trí pod so với tâm robot (đo bằng Odometry Calibration, không có trong datasheet) ---
     private static final double PARALLEL_Y_OFFSET_CM      =  -6.6488; // [cm] offset Y của encoder song song
     private static final double PERPENDICULAR_X_OFFSET_CM = -0.6;// [cm] offset X của encoder vuông góc
 
@@ -33,8 +33,7 @@ public final class Localizer {
     //  Hết vùng TUNE — không sửa bên dưới nếu không cần thiết
     // ============================================================
 
-    private static final double CM_PER_TICK =
-            (Math.PI * WHEEL_DIAMETER_CM) / TICKS_PER_REV;
+    private static final double CM_PER_TICK = Math.PI * WHEEL_DIAMETER_CM / TICKS_PER_REV;
 
     /** Read-only calibration contract shared by Localizer telemetry and checks. */
     public static final class Calibration {

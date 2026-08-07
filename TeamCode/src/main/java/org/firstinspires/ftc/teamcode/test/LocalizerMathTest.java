@@ -2,7 +2,7 @@ package org.firstinspires.ftc.teamcode.test;
 
 /** Deterministic executable fixtures for Localizer's calibrated integration contract. */
 public final class LocalizerMathTest {
-    private static final double CM_PER_TICK = Math.PI * 4.8 / 2000.0;
+    private static final double CM_PER_TICK = Math.PI * 3.2 / 2000.0;
     private static final double EPS = 1e-9;
 
     public static void main(String[] args) {

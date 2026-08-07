@@ -24,7 +24,7 @@ public final class PidTuningOpMode extends LinearOpMode {
                 hardwareMap, "leftfront", "rightfront", "leftback", "rightback", localizer
         );
         drive.setTolerance(2.0, 2.0);
-        drive.setPowerLimits(0.1, 0.1);
+        drive.setPowerLimits(0.3, 0.3);
         applyGains(drive);
 
         telemetry.addLine("PID TUNING");
