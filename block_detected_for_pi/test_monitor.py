@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import json
 import unittest
+from contextlib import redirect_stderr
 from dataclasses import replace
 
 from rich.console import Console
@@ -102,7 +103,7 @@ class MonitorRenderTests(unittest.TestCase):
 class ParserTests(unittest.TestCase):
     def test_json_and_no_ui_exclusive(self) -> None:
         parser = build_parser()
-        with self.assertRaises(SystemExit):
+        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             parser.parse_args(["--json", "--no-ui"])
 
     def test_default_dashboard_flags(self) -> None:
