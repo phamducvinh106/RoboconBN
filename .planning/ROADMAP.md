@@ -36,7 +36,7 @@ Plans:
 
 ### Phase 2: Lifting Sequence State Machine
 
-**Goal**: Execute one complete safe lifting cycle using `step`, `dir`, servos, IR sensors, odometry, and validity/freshness-aware camera outputs received through a placeholder Raspberry Pi 5 UART transport contract.
+**Goal**: Execute one complete safe lifting cycle using `step`, `dir`, servos, IR sensors, odometry, and validity/freshness-aware camera outputs received through one Raspberry Pi 5 I2C device at 7-bit address 0x42, HardwareMap name `pi5Camera`, and explicit logical channel selection.
 **Depends on**: Phase 1
 **Requirements**: MECH-01, MECH-02, MECH-03, MECH-04, MECH-05, AUTO-01, AUTO-05
 **Success Criteria**:
@@ -50,7 +50,7 @@ Plans:
 
 **Plans**: 3/5 plans executed
 
-Execution order: UART/camera manager communication test → centralized JSON → state-machine integration → placement/wiring/acceptance. Phase 2 preserves two explicit camera identities/channels but defers UART frame parsing and all OpenCV/template matching to Phase 3.
+Execution order: Control Hub I2C detection/address/read-write/heartbeat/channel bench test → centralized JSON → state-machine integration → placement/wiring/acceptance. Phase 2 preserves two explicit logical camera channels on one I2C device, defers register/frame parsing and all OpenCV/template matching, and requires FTC SDK API verification before implementation.
 
 Plans:
 

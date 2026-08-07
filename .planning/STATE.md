@@ -37,7 +37,7 @@ See: `.planning/PROJECT.md` (updated 2026-08-06)
 - IR sensors confirm cargo-ready position only.
 - Elevator homes at `endstop1`; fork states are PLACE and HOLD.
 - [Phase ?]: Hardware communication evidence precedes JSON, state-machine, and placement work
-- [Phase ?]: Pi5 UART parser/OpenCV remain deferred; invalid placeholder frames cannot authorize movement
+- [Phase ?]: Pi5 I2C device API/README verification remains required; frame parser/OpenCV remain deferred; invalid or stale placeholder frames cannot authorize movement
 
 ## Next Action
 

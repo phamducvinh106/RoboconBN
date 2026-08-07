@@ -33,7 +33,7 @@ Strict versioned JSON asset now supplies validated lifting calibration and runti
 
 ## Deferred Scope
 
-No state-machine integration, placement wiring, OpenCV/template thresholds, UART parser, timeout/recovery policy, or camera implementation added.
+No state-machine integration, placement wiring, OpenCV/template thresholds, I2C parser, timeout/recovery policy, or camera implementation added.
 
 ## Known Stubs
 

@@ -5,7 +5,7 @@ subsystem: hardware
 tags: [ftc, hardware, telemetry, uart, camera, testing]
 requires:
   - phase: 02-two-mode-opencv-camera
-    provides: manager seams and Pi5 UART placeholder contracts from 02-01
+    provides: manager seams and Pi5 I2C placeholder contracts from 02-01
 provides:
   - supervised low-power manager communication OpMode
   - manager-specific offline assertions and ordered validation contract
@@ -18,12 +18,12 @@ key-files:
   modified: [TeamCode/src/main/java/org/firstinspires/ftc/teamcode/test/LiftingHardwareManagerTest.java, .planning/phases/02-two-mode-opencv-camera/02-VALIDATION.md]
 key-decisions:
   - Hardware communication evidence precedes JSON, state-machine, and placement work.
-  - Pi5 UART parser/OpenCV remain deferred; invalid placeholder frames cannot authorize movement.
+  - Pi5 I2C parser/OpenCV remain deferred; invalid placeholder frames cannot authorize movement.
   - No timeout or recovery behavior added; operator controls each isolated check.
 requirements-completed: [MECH-01, MECH-02, MECH-03, MECH-04, MECH-05, TEST-02]
 coverage:
   - id: D1
-    description: Offline manager checks cover stepper, fork, IR, pose, release, and both UART camera channels.
+    description: Offline manager checks cover stepper, fork, IR, pose, release, and both I2C camera channels.
     requirement: TEST-02
     verification:
       - kind: unit
@@ -76,7 +76,7 @@ status: complete
 **Impact on plan:** No scope change; reused existing manager API.
 
 ## Known Stubs
-- `Pi5UartCameraTransport` intentionally returns invalid placeholder frames; parser and vision remain deferred by D-03/D-05.
+- `Pi5I2cCameraDeviceManager` intentionally returns invalid placeholder frames; parser and vision remain deferred by D-03/D-05.
 - JSON config version/fingerprint telemetry is labeled pending until Plan 02-03 adds strict external loading.
 
 ## Issues Encountered
@@ -84,7 +84,7 @@ status: complete
 
 ## Next Phase Readiness
 - Plan 02-03 can add strict JSON loading after hardware communication evidence.
-- No state machine, placement, timeout, or recovery logic added.
+- No state machine, placement, timeout, or recovery logic added. HardwareMap identity `pi5Camera`, 0x42, register read/write, heartbeat, and both logical channels remain hardware acceptance checks.
 
 ## Self-Check: PASSED
 - SUMMARY file exists.

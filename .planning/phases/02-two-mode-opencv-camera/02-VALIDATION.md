@@ -2,11 +2,11 @@
 
 ## Execution order
 
-Validation is blocking and ordered: (1) supervised hardware communication test for stepper, servos, IR, endstop, encoder/localizer, release/back-out, and Raspberry Pi 5 UART/camera-manager placeholder communication for both explicit camera channels, (2) strict centralized JSON load, (3) manager-backed state-machine tests and compile, (4) placement wiring, one-cycle, and six-cycle acceptance. No downstream gate substitutes for missing UART/camera communication evidence. UART frame parsing and OpenCV/template matching are not Phase 2 gates.
+Validation is blocking and ordered: (1) supervised hardware communication test for stepper, servos, IR, endstop, encoder/localizer, release/back-out, and Raspberry Pi 5 I2C device-manager communication for both explicit logical camera channels, (2) strict centralized JSON load, (3) manager-backed state-machine tests and compile, (4) placement wiring, one-cycle, and six-cycle acceptance. No downstream gate substitutes for missing I2C device communication evidence. I2C register/frame parsing and OpenCV/template matching are not Phase 2 gates.
 
 ## Manager coverage
 
-Each physical subsystem has separate manager evidence, including `CameraAdapterManager` with a Raspberry Pi 5 UART transport placeholder and two explicit camera channels/identities (`webcam1`, `webcam2`). Tests use injected fake channels/clocks/providers. Telemetry records camera identity/channel, transport status, frame validity, freshness, polarity, direction, raw/derived readings, pulse state, pose validity, release state, and config fingerprint. Invalid/incomplete placeholder data must never authorize movement.
+Each physical subsystem has separate manager evidence, including `CameraAdapterManager` with one Raspberry Pi 5 I2C device placeholder (`pi5Camera`, address 0x42) and two explicit logical camera channels/identities (`webcam1`, `webcam2`). Tests use injected fake channels/clocks/providers. Telemetry records camera identity/channel, transport status, frame validity, freshness, polarity, direction, raw/derived readings, pulse state, pose validity, release state, and config fingerprint. Invalid/incomplete placeholder data must never authorize movement.
 
 ## Offline commands
 
@@ -22,13 +22,13 @@ gradlew.bat :TeamCode:compileDebugJavaWithJavac
 
 - D-01: one versioned JSON asset contains all runtime tuning; missing, malformed, wrong-version, incomplete, non-finite, or out-of-range config enters `SAFE_STOP`; no defaults.
 - D-02: every movement transition requires fresh finite Localizer/encoder state, target tolerance, position/heading error, settle cycles, encoder validity, and no-progress detection. Applies to `MOVE_TO_SHELF`, `CENTER`, `APPROACH`, `BACK_OUT`, `MOVE_NEAR_FACTORY`, `MOVE_TO_PLACEMENT_POSITION`, and `BACK_OUT_AFTER_RELEASE`.
-- D-03/D-04/D-06/D-07: both explicit camera channels use Pi5 UART placeholder contracts; validity/freshness gates movement, invalid/incomplete data cannot authorize movement, and communication evidence precedes JSON/state integration.
-- D-05: no OpenCV/template matching or UART frame parser implementation in Phase 2.
+- D-03/D-04/D-06/D-07/D-08: both explicit camera channels use Pi5 I2C placeholder device contracts; logical payload is packed 20-bit (not 20-byte) with masks/shifts `X_MASK=0x000FF`/0, `Y_MASK=0x0FF00`/8, `LEFT_TYPE_MASK=0x30000`/16, `RIGHT_TYPE_MASK=0xC0000`/18; decode unsigned values and configurable 0..3 → block types 01..04 mapping. Validity/freshness/completeness gates movement; invalid/reserved codes, stale or partial reads cannot authorize movement; communication evidence precedes JSON/state integration.
+- D-05: no OpenCV/template matching or I2C frame parser implementation in Phase 2.
 - Encoder-confirmed arrival gates remain required. Error recovery policy remains deferred; do not add recovery behavior beyond explicit invalid-safety stopping.
 
 ## Hardware acceptance
 
-Run `LiftingHardwareTestOpMode` first at low power. Verify exact names (`step`, `dir`, `endstop1`, `servoLeft`, `servoRight`, `leftIR`, `rightIR`, `webcam1`, `webcam2`, odometry encoders), active-low behavior, step-low-before-dir, travel bounds, PLACE/HOLD, camera freshness, finite pose, release/back-out readings, and telemetry. Record config version/fingerprint and localized JSON edits.
+Run `LiftingHardwareTestOpMode` first at low power. Verify exact names (`step`, `dir`, `endstop1`, `servoLeft`, `servoRight`, `leftIR`, `rightIR`, `pi5Camera`, odometry encoders), I2C address 0x42, HardwareMap recognition, channel selection, register read/write, heartbeat, and active-low behavior, step-low-before-dir, travel bounds, PLACE/HOLD, camera freshness, finite pose, release/back-out readings, and telemetry. Record config version/fingerprint and localized JSON edits.
 
 Only after manager evidence passes: run one supervised cycle, then `3 shelves × 2 levels = 6 cycles`, `12 blocks`. Confirm left placement fully releases and backs out 20 cm before right starts, right re-establishes required height, and no cycle advances before `CYCLE_COMPLETE`.
 

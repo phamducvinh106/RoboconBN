@@ -38,7 +38,7 @@
 - [x] **MECH-02**: Stepper motion uses `step` pulses and `dir` direction with calibrated travel bounds.
 - [x] **MECH-03**: Both fork servos support `PLACE` parallel to field and `HOLD` perpendicular to field.
 - [x] **MECH-04**: `leftIR` and `rightIR` confirm cargo-ready position with debounce; they do not classify block type.
-- [x] **MECH-05**: Pickup sequence consumes two explicit camera identities/channels (`webcam1` left-centering role and `webcam2` second-camera role) through a validity/freshness-aware result contract; Phase 2 does not implement OpenCV/template matching or UART frame parsing, then mechanical coupling centers the right fork before forward approach, dual IR confirmation, one-cycle pickup, and lift.
+- [x] **MECH-05**: Pickup sequence consumes two explicit camera identities/channels (`webcam1` left-centering role and `webcam2` second-camera role) through a validity/freshness-aware result contract; Phase 2 does not implement OpenCV/template matching or physical I2C frame parsing; one I2C device is detectable by Control Hub through HardwareMap, then mechanical coupling centers the right fork before forward approach, dual IR confirmation, one-cycle pickup, and lift. The logical camera payload is packed into 20 bits: unsigned X center bits 0-7, unsigned Y center bits 8-15, left block code bits 16-17, and right block code bits 18-19. Codes 0..3 map configurably to block types 01..04; invalid/reserved, stale, or partial reads cannot authorize movement. Physical frame/register/endian/checksum details, sentinel policy, screen coordinates, and I2C read atomicity remain deferred.
 
 ### Autonomous Flow
 
