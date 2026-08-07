@@ -1,0 +1,228 @@
+RBC BNMR 2026 – ROBOT CONTEXT CHO BẢNG O2
+==========================================
+
+MỤC TIÊU
+- Robot tự động thi bảng O2 “Khát vọng công nghệ”.
+- Thời gian trận: tối đa 240 giây.
+- Nhiệm vụ chính: nhận diện kiện hàng bằng Camera AI, nâng pallet, vận chuyển đến đúng nhà máy.
+- Nhiệm vụ 2 chỉ được chạy sau khi hoàn thành 100% nhiệm vụ 1.
+- Không điều khiển trực tiếp robot sau khi bấm Start.
+
+LUẬT KỸ THUẬT BẮT BUỘC
+- 1 robot/đội, 1 bộ điều khiển.
+- Kích thước lúc xuất phát không vượt quá 400 x 400 x 400 mm.
+- Sau khi xuất phát được phép mở rộng.
+- Tổng số động cơ, gồm servo, không quá 12.
+- Bộ điều khiển tối đa 16 cổng vào/ra.
+- Điện áp định mức không quá 12 V; pin không quá 5000 mAh.
+- Camera AI phải nối trực tiếp bộ điều khiển; xử lý ảnh bằng thư viện cục bộ; không Internet, không máy tính/điện thoại ngoài.
+- Không khung kim loại; chỉ được dùng kim loại cho ốc vít, bu lông, đinh tán và phần phụ trợ hợp lệ.
+- Không bộ phận nguy hiểm, không làm hỏng sa bàn, không lấn sân đối phương.
+- Không nạp dữ liệu/chương trình để xác định vị trí kiện hàng sau khi robot đã nộp kiểm tra.
+
+PHẦN CỨNG HIỆN CÓ
+Bộ điều khiển: REV Control Hub
+
+Di chuyển:
+- Mecanum drivetrain:
+  - leftfront
+  - leftback
+  - rightfront
+  - rightback
+- GoBilda 4-bar odometry:
+  - strafe: rightfront
+  - forward: leftfront
+
+Cơ cấu hàng hóa:
+- servoLeft, servoRight: hai servo điều khiển hai lưỡi fork.
+- Fork gắn trên một thang máy dạng extrusion + bộ con trượt.
+- Motor bước:
+  - step: tạo bước
+  - dir: điều khiển chiều quay
+- endstop1: xác định vị trí gốc/thấp nhất của thang máy.
+- Cần dùng fork nâng pallet từ dưới lên theo quy tắc xe nâng.
+- Cần giữ pallet ổn định khi di chuyển và đặt xuống.
+
+Cảm biến và xử lý ảnh:
+- webcam1: Camera AI chạy OpenCV cục bộ.
+- Camera đặt trên mặt trên fork.
+- leftIR, rightIR: cảm biến hồng ngoại tiệm cận; chỉ xác nhận kiện hàng đã vào vị trí sẵn sàng di chuyển, không thay thế Camera AI.
+
+TRẠNG THÁI CƠ CẤU GẮP
+- PLACE: fork/servo song song với mặt đất; dùng khi đặt hoặc thả kiện.
+- HOLD: fork/servo vuông góc với mặt đất; dùng khi giữ kiện.
+- Cần hiệu chuẩn góc servo thực tế trước khi chạy trận.
+
+ĐỀ O2 – SA BÀN VÀ KIỆN HÀNG
+- Mỗi phần sân có vùng xuất phát 400 x 400 mm.
+- Khu kho hải quan có 3 vị trí kệ hàng.
+- Có 1 vị trí kho hàng rời.
+- Mỗi kệ chứa pallet ở tầng 1 hoặc tầng 2.
+- Một kiện hàng gồm pallet 90 x 90 x 26 mm và khối hàng phía trên.
+- Khối hàng 40 x 40 x 40 mm, ảnh nhận dạng dán trên cả 6 mặt.
+- Có 12 kiện hàng trong nhiệm vụ 1.
+- Vị trí kiện hàng được trọng tài bốc thăm trước trận, giống nhau cho các đội.
+- 4 loại kiện hàng:
+  - Kiện 01 -> nhà máy Samsung
+  - Kiện 02 -> nhà máy Foxconn
+  - Kiện 03 -> nhà máy Amkor
+  - Kiện 04 -> nhà máy Hana Micron Vina
+- Nhà máy đích: vùng 250 x 250 mm.
+- Kiện phải nằm hoàn toàn trong vùng nhà máy, pallet song song mặt sa bàn, không nghiêng/ngã.
+- Có thể xếp chồng kiện nếu vẫn hợp lệ.
+- Kho hàng rời có 1 pallet chứa 4 loại hàng khác nhau; đưa đến nhà máy liên hợp sau khi hoàn thành nhiệm vụ 1.
+
+ĐIỂM
+- Nhiệm vụ 1: 20 điểm/kiện đặt đúng nhà máy; tối đa 240 điểm.
+- Nhiệm vụ 2: 30 điểm cho kiện kho hàng rời đặt đúng nhà máy liên hợp.
+- Tổng điểm nhiệm vụ tối đa theo đề: 270 điểm.
+- Reset: tối đa 5 lần, mỗi lần trừ 10 điểm.
+- Kiện đã đặt đúng vẫn giữ nguyên điểm/vị trí sau reset.
+
+CHIẾN LƯỢC ROBOT
+1. Homing thang máy bằng endstop1.
+2. Di chuyển đến khu kho hải quan bằng odometry.
+3. Quét từng vị trí kệ bằng webcam1.
+4. Nhận diện mã kiện 01/02/03/04 bằng OpenCV.
+5. Chọn kiện chưa hoàn thành, ưu tiên đường đi ngắn và thao tác ít rủi ro.
+6. Căn chỉnh robot/fork với pallet.
+7. Hạ fork xuống dưới pallet.
+8. Xác nhận kiện vào vị trí bằng leftIR/rightIR nếu phù hợp.
+9. Đóng/đưa cơ cấu sang HOLD.
+10. Nâng pallet bằng motor bước đến độ cao an toàn.
+11. Di chuyển đến nhà máy tương ứng.
+12. Căn chỉnh vị trí đặt.
+13. Đưa fork vào PLACE, hạ kiện, rút fork.
+14. Ghi nhận kiện hoàn thành.
+15. Lặp đến khi đủ 12 kiện hoặc hết thời gian.
+16. Chỉ khi đủ 12 kiện: đi kho hàng rời, lấy kiện tổng hợp, đưa đến nhà máy liên hợp.
+17. Dừng an toàn trước khi hết 240 giây.
+
+FLOWCHART HOẠT ĐỘNG
+====================
+[START]
+   |
+   v
+[Khởi tạo REV Control Hub, motor, servo, camera, IR, odometry]
+   |
+   v
+[Homing thang máy bằng endstop1]
+   | thất bại
+   +------------------> [Dừng an toàn]
+   |
+   v
+[Chờ lệnh BẮT ĐẦU]
+   |
+   v
+[Đọc timer; timer < 240 s?]
+   | Không
+   +------------------> [Dừng, kết thúc trận]
+   |
+  Có
+   |
+   v
+[Đã đặt đủ 12 kiện nhiệm vụ 1?]
+   | Chưa
+   v
+[Di chuyển đến vị trí kệ tiếp theo]
+   |
+   v
+[Camera quét ảnh kiện hàng]
+   | Không nhận diện
+   +------------------> [Quét lại / chọn vị trí khác]
+   |
+   v
+[Kiện thuộc loại nào?]
+   | 01/02/03/04
+   v
+[Tính nhà máy đích]
+   |
+   v
+[Căn chỉnh pallet bằng odometry + camera]
+   | Không ổn định / IR chưa xác nhận
+   +------------------> [Điều chỉnh lại hoặc bỏ qua kiện]
+   |
+   v
+[Hạ fork -> luồn dưới pallet -> HOLD]
+   |
+   v
+[Nâng pallet bằng step/dir]
+   |
+   v
+[Di chuyển đến nhà máy đích]
+   |
+   v
+[Căn chỉnh vùng 250 x 250 mm]
+   |
+   v
+[PLACE -> hạ pallet -> rút fork]
+   |
+   v
+[Ghi nhận kiện hoàn thành]
+   |
+   +------------------> [Timer < 240 s?]
+
+[Đã đủ 12 kiện nhiệm vụ 1]
+   | Chưa
+   +------------------> [Tiếp tục nhiệm vụ 1]
+   |
+  Đủ
+   |
+   v
+[Timer < 240 s?]
+   | Không
+   +------------------> [Dừng, kết thúc trận]
+   |
+  Có
+   |
+   v
+[Di chuyển đến kho hàng rời]
+   |
+   v
+[Nhận diện/căn chỉnh kiện tổng hợp]
+   |
+   v
+[Nâng pallet và giữ ổn định]
+   |
+   v
+[Di chuyển đến nhà máy liên hợp]
+   |
+   v
+[PLACE trong vùng 250 x 250 mm]
+   |
+   v
+[Dừng an toàn trước hết giờ]
+   |
+   v
+[END]
+
+LOGIC LỖI VÀ AN TOÀN
+- Nếu mất camera: dừng cơ cấu nâng, không tự đoán loại kiện.
+- Nếu mất odometry hoặc robot lệch lớn: dừng, tránh lấn sân.
+- Nếu endstop1 không kích hoạt khi homing: không chạy nhiệm vụ.
+- Nếu IR không xác nhận kiện ổn định: không nâng hoặc hạ tốc độ để kiểm tra.
+- Nếu pallet nghiêng/ngã: giữ cơ cấu, không chạy nhanh; chuyển sang quy trình phục hồi.
+- Nếu kẹt: dừng motor bước, lùi cơ cấu theo giới hạn an toàn.
+- Không để fork vượt vùng cấm hoặc va vào kệ.
+- Theo dõi timer liên tục; bỏ nhiệm vụ 2 nếu không còn đủ thời gian.
+
+MISMATCH CẦN XÁC NHẬN TRƯỚC KHI CODE
+- Mô tả phần cứng hiện tại nói “fork gắp” và servo PLACE/HOLD, nhưng luật O2 yêu cầu nâng pallet như xe nâng.
+- Cần xác nhận fork hiện tại có thể luồn dưới pallet 90 x 90 mm và nâng kiện tổng khối lượng thực tế.
+- Cần xác nhận góc PLACE/HOLD, chiều dương step/dir, tỉ số bước/mm và giới hạn hành trình.
+- Cần xác nhận webcam1 có đủ góc nhìn để nhận diện ảnh trên 6 mặt khi kiện ở tầng 1/tầng 2.
+- Cần xác nhận tên cổng REV Control Hub trong code FTC hiện tại.
+- Cần xác nhận tọa độ tuyệt đối các kệ và nhà máy trên sa bàn trước khi viết autonomous.
+
+NGUYÊN TẮC CHO VIBECODE
+- Không tự bịa tọa độ, góc servo, bước/mm, tốc độ hoặc ngưỡng OpenCV.
+- Tách code thành state machine: INIT, HOME, SCAN, APPROACH, PICK, LIFT, DELIVER, PLACE, VERIFY, NEXT, FAILSAFE.
+- Mọi chuyển động phải có timeout, giới hạn tốc độ và điều kiện dừng.
+- Camera nhận diện loại kiện; odometry điều hướng; IR xác nhận vị trí cơ khí.
+- Ưu tiên hoàn thành chắc nhiệm vụ 1 trước nhiệm vụ 2.
+- Code phải chạy offline, không gọi Internet.
+- Không đổi tên hardware map hiện có nếu chưa kiểm tra code.
+
+NGUỒN
+- Mô tả robot: TeamCode/.../mô tả robot.txt
+- Thể lệ: Thể lệ RBC BNMR 2026 – Tranh Cúp Foxconn, Phụ lục 01 và Phụ lục 03.
