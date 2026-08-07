@@ -25,9 +25,7 @@
   "scanSpeed": 0.2,
   "centerSpeed": 0.15,
   "approachSpeed": 0.1,
-  "pi5UartBaud": 9600,
-  "pi5UartDevice": "pi5UartRx",
-  "cameraFrameWidth": 320,
+  "cameraFrameWidth": 640,
   "endstopActiveLow": true,
   "irActiveLow": true,
   "factories": {
