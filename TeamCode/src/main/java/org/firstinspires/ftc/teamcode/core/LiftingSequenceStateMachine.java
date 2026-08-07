@@ -1,79 +1,18 @@
 package org.firstinspires.ftc.teamcode.core;
 
 public final class LiftingSequenceStateMachine {
-    public enum State { START, HOMING, SET_PLACE, PLACE_AT_FACTORY, MOVE_TO_SHELF, SELECT_LEVEL, READY1_PUSH, READY1, READY2,
-        SCAN_RIGHT, SCAN_LEFT, CENTER_LEFT_SLOW, APPROACH_IR_SLOW, CONFIRM_IR, SAVE_SHELF_POSE,
-        CALIBRATE_SHELF_COORDINATE, LIFT1, LIFT2, BACK_OUT_FROM_SHELF, HOLD, CYCLE_COMPLETE, SAFE_STOP }
-    public enum FailureCode { NONE, STOP_REQUESTED, TIMEOUT, CAMERA_STALE, CAMERA_CLASSIFICATION_FAILED, CENTERING_TIMEOUT,
-        IR_TIMEOUT, IR_PARTIAL, POSE_INVALID, ELEVATOR_TIMEOUT }
-    public interface Clock { long nowNs(); }
-    public interface Actuators { void stop(); boolean home(); boolean elevatorAt(LiftingSequenceConfig.ElevatorTarget target); void setFork(LiftingSequenceConfig.ForkPose pose); void drive(double forward, double strafe); void stopDrive(); }
-    public interface CameraResult { boolean fresh(long nowNs); boolean classificationValid(); boolean stableLeftTarget(); double leftDxPx(); }
-    public interface PoseProvider { void update(); double x(); double y(); double headingDeg(); }
-    public static final class ShelfPose { public final int shelf, level; public final double x, y, heading; public final long timestampNs;
-        ShelfPose(int shelf, int level, double x, double y, double heading, long timestampNs) { this.shelf=shelf; this.level=level; this.x=x; this.y=y; this.heading=heading; this.timestampNs=timestampNs; } }
-
-    private final Clock clock; private final Actuators actuators; private final CameraResult camera; private final PoseProvider pose;
-    private State state = State.START; private FailureCode failure = FailureCode.NONE; private long stateStartedNs;
-    private boolean stopRequested, active = true, leftIr, rightIr; private long bothIrSinceNs; private int retries;
-    private int shelf = 1, level = 1, completedCycles; private ShelfPose shelfPose;
-    private static final double CENTER_DEADBAND_PX = 8.0;
-
-    public LiftingSequenceStateMachine(Clock clock, Actuators actuators) { this(clock, actuators, null, null); }
-    public LiftingSequenceStateMachine(Clock clock, Actuators actuators, CameraResult camera, PoseProvider pose) {
-        if (clock == null || actuators == null) throw new NullPointerException(); LiftingSequenceConfig.validate();
-        this.clock=clock; this.actuators=actuators; this.camera=camera; this.pose=pose; stateStartedNs=clock.nowNs();
-    }
-    public void requestStop() { stopRequested=true; } public void setActive(boolean value) { active=value; }
-    public State getState() { return state; } public FailureCode getFailure() { return failure; } public long elapsedNs() { return clock.nowNs()-stateStartedNs; }
-    public int getShelf() { return shelf; } public int getLevel() { return level; } public int getCompletedCycles() { return completedCycles; }
-    public int getRetries() { return retries; } public ShelfPose getShelfPose() { return shelfPose; }
-    public void setIrState(boolean left, boolean right) { leftIr=left; rightIr=right; }
-
-    public void tick() {
-        if (state == State.SAFE_STOP) return;
-        long now=clock.nowNs();
-        if (stopRequested || !active) { safeStop(FailureCode.STOP_REQUESTED); return; }
-        if (elapsedNs() > LiftingSequenceConfig.STATE_TIMEOUT_NS) { safeStop(FailureCode.TIMEOUT); return; }
-        switch (state) {
-            case START: transition(State.HOMING); break;
-            case HOMING: if (actuators.home()) transition(State.SET_PLACE); break;
-            case SET_PLACE: actuators.setFork(LiftingSequenceConfig.ForkPose.PLACE); transition(State.PLACE_AT_FACTORY); break;
-            case PLACE_AT_FACTORY: transition(State.MOVE_TO_SHELF); break;
-            case MOVE_TO_SHELF: transition(State.SELECT_LEVEL); break;
-            case SELECT_LEVEL: transition(level == 1 ? State.READY1 : State.READY2); break;
-            case READY1: if (actuators.elevatorAt(LiftingSequenceConfig.ElevatorTarget.READY1)) transition(State.SCAN_RIGHT); break;
-            case READY2: if (actuators.elevatorAt(LiftingSequenceConfig.ElevatorTarget.READY2)) transition(State.SCAN_RIGHT); break;
-            case SCAN_RIGHT: if (cameraOk(now)) transition(State.SCAN_LEFT); else retry(FailureCode.CAMERA_CLASSIFICATION_FAILED); break;
-            case SCAN_LEFT: if (cameraOk(now)) transition(State.CENTER_LEFT_SLOW); else retry(FailureCode.CAMERA_CLASSIFICATION_FAILED); break;
-            case CENTER_LEFT_SLOW:
-                if (!cameraOk(now)) { actuators.stopDrive(); retry(FailureCode.CAMERA_STALE); break; }
-                if (Math.abs(camera.leftDxPx()) <= CENTER_DEADBAND_PX) { actuators.stopDrive(); transition(State.APPROACH_IR_SLOW); }
-                else actuators.drive(0, camera.leftDxPx() > 0 ? -0.08 : 0.08);
-                break;
-            case APPROACH_IR_SLOW:
-                if (leftIr && rightIr) { actuators.stopDrive(); transition(State.CONFIRM_IR); }
-                else { if (leftIr || rightIr) retries=0; actuators.drive(0.08, 0); }
-                break;
-            case CONFIRM_IR:
-                if (leftIr && rightIr) { if (bothIrSinceNs == 0) bothIrSinceNs=now; if (now-bothIrSinceNs >= LiftingSequenceConfig.IR_DEBOUNCE_NS) transition(State.SAVE_SHELF_POSE); }
-                else { bothIrSinceNs=0; if (elapsedNs() > LiftingSequenceConfig.STATE_TIMEOUT_NS/2) safeStop(FailureCode.IR_TIMEOUT); }
-                break;
-            case SAVE_SHELF_POSE: if (pose == null) { safeStop(FailureCode.POSE_INVALID); break; } pose.update();
-                if (finitePose()) { shelfPose=new ShelfPose(shelf,level,pose.x(),pose.y(),pose.headingDeg(),now); transition(State.CALIBRATE_SHELF_COORDINATE); } else safeStop(FailureCode.POSE_INVALID); break;
-            case CALIBRATE_SHELF_COORDINATE: transition(State.LIFT1); break;
-            case LIFT1: if (actuators.elevatorAt(LiftingSequenceConfig.ElevatorTarget.LIFT1)) transition(State.BACK_OUT_FROM_SHELF); break;
-            case LIFT2: if (actuators.elevatorAt(LiftingSequenceConfig.ElevatorTarget.LIFT2)) transition(State.BACK_OUT_FROM_SHELF); break;
-            case BACK_OUT_FROM_SHELF: actuators.stopDrive(); transition(State.HOLD); break;
-            case HOLD: actuators.setFork(LiftingSequenceConfig.ForkPose.HOLD); transition(State.CYCLE_COMPLETE); break;
-            case CYCLE_COMPLETE: completedCycles++; if (completedCycles >= 6) { transition(State.SAFE_STOP); failure=FailureCode.NONE; } else { if (++level > 2) { level=1; shelf++; } transition(State.HOMING); } break;
-            default: break;
-        }
-    }
-    private boolean cameraOk(long now) { return camera != null && camera.fresh(now) && camera.classificationValid() && camera.stableLeftTarget(); }
-    private boolean finitePose() { return Double.isFinite(pose.x()) && Double.isFinite(pose.y()) && Double.isFinite(pose.headingDeg()) && Math.abs(pose.headingDeg()) <= 360.0; }
-    private void retry(FailureCode code) { if (++retries > LiftingSequenceConfig.MAX_RETRIES) safeStop(code); }
-    private void transition(State next) { state=next; stateStartedNs=clock.nowNs(); retries=0; bothIrSinceNs=0; }
-    public void rejectCamera(boolean stale, double x, double y, double heading) { if (stale || !Double.isFinite(x)||!Double.isFinite(y)||!Double.isFinite(heading)) safeStop(stale ? FailureCode.CAMERA_STALE : FailureCode.POSE_INVALID); }
-    public void safeStop(FailureCode reason) { if (state==State.SAFE_STOP) return; failure=reason; state=State.SAFE_STOP; actuators.stop(); }
+    public enum State { START,HOMING,SET_PLACE,PLACE_AT_FACTORY,MOVE_TO_SHELF,SELECT_LEVEL,READY1_PUSH,READY1,READY2,SCAN_RIGHT,SCAN_LEFT,CENTER_LEFT_SLOW,APPROACH_IR_SLOW,CONFIRM_IR,SAVE_SHELF_POSE,CALIBRATE_SHELF_COORDINATE,LIFT1,LIFT2,BACK_OUT_FROM_SHELF,HOLD,MOVE_NEAR_FACTORY_LEFT,PLACE_LEFT,READY1_LEFT,MOVE_TO_PLACEMENT_LEFT,HOME_LEFT,LEFT_BLOCK_RELEASED,BACK_OUT_AFTER_LEFT_RELEASE_20CM,MOVE_NEAR_FACTORY_RIGHT,PLACE_RIGHT,READY1_RIGHT,MOVE_TO_PLACEMENT_RIGHT,HOME_RIGHT,RIGHT_BLOCK_RELEASED,BACK_OUT_AFTER_RIGHT_RELEASE_20CM,CYCLE_COMPLETE,SAFE_STOP }
+    public enum FailureCode { NONE,STOP_REQUESTED,TIMEOUT,CAMERA_STALE,CAMERA_CLASSIFICATION_FAILED,CENTERING_TIMEOUT,IR_TIMEOUT,IR_PARTIAL,POSE_INVALID,ELEVATOR_TIMEOUT,FACTORY_MOVE_TIMEOUT,PLACEMENT_TIMEOUT,RELEASE_UNCONFIRMED,BACK_OUT_AFTER_RELEASE_TIMEOUT }
+    public interface Clock{long nowNs();} public interface Actuators{void stop();boolean home();boolean elevatorAt(LiftingSequenceConfig.ElevatorTarget t);void setFork(LiftingSequenceConfig.ForkPose p);void drive(double f,double s);void stopDrive();boolean atPose(LiftingSequenceConfig.Pose p);boolean released();double backOutDistanceCm();}
+    public interface CameraResult{boolean fresh(long n);boolean classificationValid();boolean stableLeftTarget();double leftDxPx();} public interface PoseProvider{void update();double x();double y();double headingDeg();}
+    public static final class ShelfPose{public final int shelf,level;public final double x,y,heading;public final long timestampNs;ShelfPose(int s,int l,double x,double y,double h,long n){shelf=s;level=l;this.x=x;this.y=y;heading=h;timestampNs=n;}}
+    private final Clock clock;private final Actuators actuators;private final CameraResult camera;private final PoseProvider pose;private State state=State.START;private FailureCode failure=FailureCode.NONE;private long stateStartedNs;private boolean stopRequested,active=true,leftIr,rightIr;private long bothIrSinceNs;private int retries,shelf=1,level=1,completedCycles;private ShelfPose shelfPose;private String leftType="01",rightType="02";
+    public LiftingSequenceStateMachine(Clock c,Actuators a){this(c,a,null,null);} public LiftingSequenceStateMachine(Clock c,Actuators a,CameraResult cam,PoseProvider p){if(c==null||a==null)throw new NullPointerException();LiftingSequenceConfig.validate();clock=c;actuators=a;camera=cam;pose=p;stateStartedNs=c.nowNs();}
+    public void setBlockTypes(String left,String right){LiftingSequenceConfig.factory(left);LiftingSequenceConfig.factory(right);leftType=left;rightType=right;} public void requestStop(){stopRequested=true;}public void setActive(boolean v){active=v;} public State getState(){return state;}public FailureCode getFailure(){return failure;}public long elapsedNs(){return clock.nowNs()-stateStartedNs;}public int getShelf(){return shelf;}public int getLevel(){return level;}public int getCompletedCycles(){return completedCycles;}public int getRetries(){return retries;}public ShelfPose getShelfPose(){return shelfPose;}public void setIrState(boolean l,boolean r){leftIr=l;rightIr=r;}
+    public void tick(){if(state==State.SAFE_STOP)return;long now=clock.nowNs();if(stopRequested||!active){safeStop(FailureCode.STOP_REQUESTED);return;}if(elapsedNs()>LiftingSequenceConfig.STATE_TIMEOUT_NS){safeStop(FailureCode.TIMEOUT);return;}switch(state){
+        case START:transition(State.HOMING);break;case HOMING:if(actuators.home())transition(State.SET_PLACE);break;case SET_PLACE:actuators.setFork(LiftingSequenceConfig.ForkPose.PLACE);transition(State.PLACE_AT_FACTORY);break;case PLACE_AT_FACTORY:transition(State.MOVE_TO_SHELF);break;case MOVE_TO_SHELF:transition(State.SELECT_LEVEL);break;case SELECT_LEVEL:transition(level==1?State.READY1:State.READY2);break;case READY1:if(actuators.elevatorAt(LiftingSequenceConfig.ElevatorTarget.READY1))transition(State.SCAN_RIGHT);break;case READY2:if(actuators.elevatorAt(LiftingSequenceConfig.ElevatorTarget.READY2))transition(State.SCAN_RIGHT);break;
+        case SCAN_RIGHT:if(cameraOk(now))transition(State.SCAN_LEFT);else retry(FailureCode.CAMERA_CLASSIFICATION_FAILED);break;case SCAN_LEFT:if(cameraOk(now))transition(State.CENTER_LEFT_SLOW);else retry(FailureCode.CAMERA_CLASSIFICATION_FAILED);break;case CENTER_LEFT_SLOW:if(!cameraOk(now)){actuators.stopDrive();retry(FailureCode.CAMERA_STALE);}else if(Math.abs(camera.leftDxPx())<=8){actuators.stopDrive();transition(State.APPROACH_IR_SLOW);}else actuators.drive(0,camera.leftDxPx()>0?-.08:.08);break;case APPROACH_IR_SLOW:if(leftIr&&rightIr){actuators.stopDrive();transition(State.CONFIRM_IR);}else actuators.drive(.08,0);break;case CONFIRM_IR:if(leftIr&&rightIr){if(bothIrSinceNs==0)bothIrSinceNs=now;if(now-bothIrSinceNs>=LiftingSequenceConfig.IR_DEBOUNCE_NS)transition(State.SAVE_SHELF_POSE);}else bothIrSinceNs=0;break;case SAVE_SHELF_POSE:if(pose==null){safeStop(FailureCode.POSE_INVALID);break;}pose.update();if(Double.isFinite(pose.x())&&Double.isFinite(pose.y())&&Double.isFinite(pose.headingDeg())&&Math.abs(pose.headingDeg())<=360)shelfPose=new ShelfPose(shelf,level,pose.x(),pose.y(),pose.headingDeg(),now);else{safeStop(FailureCode.POSE_INVALID);break;}transition(State.CALIBRATE_SHELF_COORDINATE);break;case CALIBRATE_SHELF_COORDINATE:transition(level==1?State.LIFT1:State.LIFT2);break;case LIFT1:if(actuators.elevatorAt(LiftingSequenceConfig.ElevatorTarget.LIFT1))transition(State.BACK_OUT_FROM_SHELF);break;case LIFT2:if(actuators.elevatorAt(LiftingSequenceConfig.ElevatorTarget.LIFT2))transition(State.BACK_OUT_FROM_SHELF);break;case BACK_OUT_FROM_SHELF:actuators.stopDrive();transition(State.HOLD);break;case HOLD:actuators.setFork(LiftingSequenceConfig.ForkPose.HOLD);transition(State.MOVE_NEAR_FACTORY_LEFT);break;
+        case MOVE_NEAR_FACTORY_LEFT:if(actuators.atPose(LiftingSequenceConfig.factory(leftType).near))transition(State.PLACE_LEFT);break;case PLACE_LEFT:actuators.setFork(LiftingSequenceConfig.ForkPose.PLACE);transition(State.READY1_LEFT);break;case READY1_LEFT:if(actuators.elevatorAt(LiftingSequenceConfig.ElevatorTarget.READY1))transition(State.MOVE_TO_PLACEMENT_LEFT);break;case MOVE_TO_PLACEMENT_LEFT:if(actuators.atPose(LiftingSequenceConfig.factory(leftType).placement))transition(State.HOME_LEFT);break;case HOME_LEFT:if(actuators.home())transition(State.LEFT_BLOCK_RELEASED);break;case LEFT_BLOCK_RELEASED:if(actuators.released())transition(State.BACK_OUT_AFTER_LEFT_RELEASE_20CM);else safeStop(FailureCode.RELEASE_UNCONFIRMED);break;case BACK_OUT_AFTER_LEFT_RELEASE_20CM:if(actuators.backOutDistanceCm()>=LiftingSequenceConfig.RELEASE_BACK_OUT_CM)transition(State.MOVE_NEAR_FACTORY_RIGHT);break;
+        case MOVE_NEAR_FACTORY_RIGHT:if(actuators.elevatorAt(level==1?LiftingSequenceConfig.ElevatorTarget.LIFT1:LiftingSequenceConfig.ElevatorTarget.LIFT2)&&actuators.atPose(LiftingSequenceConfig.factory(rightType).near))transition(State.PLACE_RIGHT);break;case PLACE_RIGHT:actuators.setFork(LiftingSequenceConfig.ForkPose.PLACE);transition(State.READY1_RIGHT);break;case READY1_RIGHT:if(actuators.elevatorAt(LiftingSequenceConfig.ElevatorTarget.READY1))transition(State.MOVE_TO_PLACEMENT_RIGHT);break;case MOVE_TO_PLACEMENT_RIGHT:if(actuators.atPose(LiftingSequenceConfig.factory(rightType).placement))transition(State.HOME_RIGHT);break;case HOME_RIGHT:if(actuators.home())transition(State.RIGHT_BLOCK_RELEASED);break;case RIGHT_BLOCK_RELEASED:if(actuators.released())transition(State.BACK_OUT_AFTER_RIGHT_RELEASE_20CM);else safeStop(FailureCode.RELEASE_UNCONFIRMED);break;case BACK_OUT_AFTER_RIGHT_RELEASE_20CM:if(actuators.backOutDistanceCm()>=20)transition(State.CYCLE_COMPLETE);break;case CYCLE_COMPLETE:completedCycles++;if(completedCycles>=6){failure=FailureCode.NONE;transition(State.SAFE_STOP);}else{if(++level>2){level=1;shelf++;}transition(State.HOMING);}break;default:break;}}
+    private boolean cameraOk(long n){return camera!=null&&camera.fresh(n)&&camera.classificationValid()&&camera.stableLeftTarget();}private void retry(FailureCode f){if(++retries>LiftingSequenceConfig.MAX_RETRIES)safeStop(f);}private void transition(State s){state=s;stateStartedNs=clock.nowNs();retries=0;bothIrSinceNs=0;}public void safeStop(FailureCode f){if(state!=State.SAFE_STOP){failure=f;state=State.SAFE_STOP;actuators.stop();}}
 }
