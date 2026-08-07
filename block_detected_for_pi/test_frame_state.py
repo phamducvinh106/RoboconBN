@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import unittest
 
-from block_detected_for_pi.i2c_slave import RegisterFile
+from block_detected_for_pi.frame_state import RegisterFile
 from block_detected_for_pi.payload import build_registers, pack_payload
 
 
-class I2cRegisterTests(unittest.TestCase):
+class FrameStateTests(unittest.TestCase):
     def test_publish_valid_frame_increments_heartbeat(self) -> None:
         register_file = RegisterFile()
         frame = build_registers(

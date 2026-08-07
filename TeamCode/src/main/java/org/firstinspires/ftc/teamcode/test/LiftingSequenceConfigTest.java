@@ -17,7 +17,8 @@ public final class LiftingSequenceConfigTest {
         check("factories", c.factoryFor("01").placement.x == 120);
         check("fingerprint", c.fingerprint.length() == 8);
         check("identities", c.webcam1Identity.equals("webcam1") && c.webcam2Identity.equals("webcam2"));
-        check("pi5 i2c", c.pi5I2cAddress == 66);
+        check("pi5 uart device", c.pi5UartDeviceName.equals("pi5UartRx"));
+        check("pi5 uart baud", c.pi5UartBaud == 9600);
         check("camera width", c.cameraFrameWidth == 320);
         rejects("missing", json.replace("\"lift2Steps\": 5625,", ""));
         rejects("wrong version", json.replace("\"version\": 1", "\"version\": 2"));

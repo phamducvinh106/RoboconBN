@@ -12,8 +12,8 @@ public final class Pi5CameraTransportFactory {
         if (hardwareMap == null || config == null || clock == null) {
             throw new IllegalArgumentException("missing pi5 camera dependencies");
         }
-        FtcPi5I2cBurstReader reader = FtcPi5I2cBurstReader.fromHardwareMap(hardwareMap, config.pi5I2cAddress);
-        return new Pi5I2cCameraTransport(
+        Pi5UartLineReader reader = FtcPi5UartLineReaderFactory.fromHardwareMap(hardwareMap, config);
+        return new Pi5UartCameraTransport(
                 clock,
                 reader,
                 config.sensorStaleNs,

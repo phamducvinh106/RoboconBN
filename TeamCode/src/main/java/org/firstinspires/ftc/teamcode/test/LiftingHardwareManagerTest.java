@@ -23,18 +23,6 @@ public final class LiftingHardwareManagerTest {
         public long nowNs() { return n; }
     }
 
-    static final class FakeReader implements Pi5I2cBurstReader {
-        byte[] data;
-        public byte[] readBurst(int register, int length) {
-            if (data == null || data.length < register + length) {
-                throw new RuntimeException("partial i2c read");
-            }
-            byte[] out = new byte[length];
-            System.arraycopy(data, register, out, 0, length);
-            return out;
-        }
-    }
-
     static byte[] frame(int payload, int heartbeat, boolean frameValid, boolean leftFound, boolean rightFound) {
         int status = Pi5PayloadDecoder.STATUS_PROTO_OK;
         if (frameValid) status |= Pi5PayloadDecoder.STATUS_FRAME_VALID;
@@ -83,22 +71,31 @@ public final class LiftingHardwareManagerTest {
         check("decode right", decoded.rightCode == 2);
 
         Clock c = new Clock();
-        FakeReader reader = new FakeReader();
-        reader.data = frame(payload, 3, true, true, true);
-        Pi5I2cCameraTransport transport = new Pi5I2cCameraTransport(c, reader, 100, 320, new String[] {"01", "02", "03", "04"});
+        int status = Pi5PayloadDecoder.STATUS_PROTO_OK
+                | Pi5PayloadDecoder.STATUS_FRAME_VALID
+                | Pi5PayloadDecoder.STATUS_LEFT_FOUND
+                | Pi5PayloadDecoder.STATUS_RIGHT_FOUND;
+        String line = Pi5UartFrameCodec.encode(3, status, payload);
+        BufferPi5UartLineReader reader = BufferPi5UartLineReader.fromLines(line);
+        Pi5UartCameraTransport transport = new Pi5UartCameraTransport(c, reader, 100, 320, new String[] {"01", "02", "03", "04"});
         CameraAdapterManager cameras = new CameraAdapterManager(transport, 100);
         c.n = 50;
-        check("i2c webcam1 valid", cameras.reading(CameraChannel.WEBCAM1).valid);
-        check("i2c webcam1 authorized", cameras.movementAuthorized(CameraChannel.WEBCAM1, 50));
-        check("i2c webcam2 type", "03".equals(cameras.reading(CameraChannel.WEBCAM2).blockType));
+        check("uart webcam1 valid", cameras.reading(CameraChannel.WEBCAM1).valid);
+        check("uart webcam1 authorized", cameras.movementAuthorized(CameraChannel.WEBCAM1, 50));
+        check("uart webcam2 type", "03".equals(cameras.reading(CameraChannel.WEBCAM2).blockType));
 
-        reader.data = frame(payload, 3, false, true, true);
+        reader.clear();
+        reader.offerLine(Pi5UartFrameCodec.encode(3, status & ~Pi5PayloadDecoder.STATUS_FRAME_VALID, payload));
+        c.n = 55;
         check("invalid frame blocked", !cameras.reading(CameraChannel.WEBCAM1).valid);
 
-        reader.data = new byte[] {0};
-        check("partial read blocked", !cameras.reading(CameraChannel.WEBCAM1).valid);
+        reader.clear();
+        reader.offerLine("$V1,1,80,00000,00\n");
+        c.n = 60;
+        check("bad crc blocked", !cameras.reading(CameraChannel.WEBCAM1).valid);
 
-        reader.data = frame(payload, 3, true, true, true);
+        reader.clear();
+        reader.offerLine(line);
         c.n = 200;
         check("stale heartbeat blocked", !cameras.movementAuthorized(CameraChannel.WEBCAM1, 200));
 

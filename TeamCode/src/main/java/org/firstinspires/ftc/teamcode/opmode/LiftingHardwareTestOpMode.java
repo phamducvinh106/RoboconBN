@@ -63,7 +63,7 @@ public final class LiftingHardwareTestOpMode extends LinearOpMode {
 
         telemetry.addLine("LOW POWER HARDWARE COMMUNICATION TEST");
         telemetry.addLine("A=home  B=READY1  X=PLACE  Y=HOLD  Dpad=IR/pose  LB/RB=cameras");
-        telemetry.addLine("Pi5 I2C camera @ 0x42 via pi5Camera; dual webcam1/webcam2 payload");
+        telemetry.addLine("Pi5 UART camera via pi5UartRx; dual webcam payload");
         telemetry.update();
         waitForStart();
         boolean lastA = false, lastB = false, lastX = false, lastY = false;

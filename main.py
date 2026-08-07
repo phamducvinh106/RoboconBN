@@ -7,27 +7,29 @@ from pathlib import Path
 
 import cv2
 
-from block_detected_for_pi.config import BlockCodeConfig, I2C_ADDRESS_DEFAULT
+from block_detected_for_pi.config import BlockCodeConfig, DEFAULT_UART_BAUD
 from block_detected_for_pi.core import TargetingCore
-from block_detected_for_pi.i2c_slave import RegisterFile, create_slave
+from block_detected_for_pi.frame_state import RegisterFile
 from block_detected_for_pi.payload import build_registers, frame_from_targets, unpack_payload
+from block_detected_for_pi.uart_publisher import create_uart_publisher
 
 
 DEFAULT_MODEL = "block_detected_for_pi/models/pose11-fp16.onnx"
+DEFAULT_UART_PORT = "/dev/serial0"
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Pi 5 dual-camera block detection with optional I2C output")
+    parser = argparse.ArgumentParser(description="Pi 5 dual-camera block detection with UART output")
     parser.add_argument("--model", default=DEFAULT_MODEL)
     parser.add_argument("--camera-left", type=int, default=0)
     parser.add_argument("--camera-right", type=int, default=1)
     parser.add_argument("--size", type=int, default=320)
     parser.add_argument("--conf", type=float, default=0.25)
     parser.add_argument("--frames", type=int, default=0)
-    parser.add_argument("--i2c", action="store_true", help="publish detections over I2C slave")
-    parser.add_argument("--i2c-bus", type=int, default=1)
-    parser.add_argument("--i2c-addr", type=lambda value: int(value, 0), default=I2C_ADDRESS_DEFAULT)
-    parser.add_argument("--mock-i2c", action="store_true", help="skip Linux I2C slave setup")
+    parser.add_argument("--no-uart", action="store_true", help="skip UART publish (stdout JSON only)")
+    parser.add_argument("--uart-port", default=DEFAULT_UART_PORT)
+    parser.add_argument("--uart-baud", type=int, default=DEFAULT_UART_BAUD)
+    parser.add_argument("--mock-uart", action="store_true", help="skip real UART port open")
     return parser
 
 
@@ -54,10 +56,9 @@ def run(argv: list[str] | None = None) -> int:
     model_path = resolve_model(args.model)
     code_config = BlockCodeConfig()
     register_file = RegisterFile()
-    slave = None
-    if args.i2c:
-        slave = create_slave(args.i2c_bus, args.i2c_addr, register_file, mock=args.mock_i2c)
-        slave.start()
+    uart = None
+    if not args.no_uart:
+        uart = create_uart_publisher(args.uart_port, args.uart_baud, mock=args.mock_uart)
 
     left_cam = cv2.VideoCapture(args.camera_left)
     right_cam = cv2.VideoCapture(args.camera_right)
@@ -86,15 +87,16 @@ def run(argv: list[str] | None = None) -> int:
                     right_code=right_code,
                     min_confidence=args.conf,
                 )
-                heartbeat = register_file.publish(
-                    build_registers(
-                        payload=payload,
-                        frame_valid=frame_valid,
-                        left_found=left_found,
-                        right_found=right_found,
-                        heartbeat=register_file.heartbeat,
-                    )
+                frame = build_registers(
+                    payload=payload,
+                    frame_valid=frame_valid,
+                    left_found=left_found,
+                    right_found=right_found,
+                    heartbeat=register_file.heartbeat,
                 )
+                heartbeat = register_file.publish(frame)
+                if uart is not None:
+                    uart.publish(frame)
                 decoded = unpack_payload(payload)
                 record = {
                     "frame_valid": frame_valid,
@@ -108,15 +110,15 @@ def run(argv: list[str] | None = None) -> int:
                         "right_code": decoded.right_code,
                     },
                     "heartbeat": heartbeat,
-                    "i2c": args.i2c,
+                    "uart": not args.no_uart,
                 }
                 print(json.dumps(record, separators=(",", ":")), flush=True)
                 count += 1
     finally:
         left_cam.release()
         right_cam.release()
-        if slave is not None:
-            slave.stop()
+        if uart is not None:
+            uart.close()
     return 0
 
 

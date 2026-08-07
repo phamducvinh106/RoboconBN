@@ -3,3 +3,4 @@ opencv-python-headless>=4.8
 ultralytics>=8.4.0
 onnxruntime>=1.22.0
 onnx>=1.17.0
+pyserial>=3.5
