@@ -26,9 +26,9 @@ public final class CameraOdometryMain extends LinearOpMode {
 
         camera = new ColorContourCamera(
                 hardwareMap,
-                "Webcam 1",
+                "webcam1",
                 true,
-                ColorContourCamera.Mode.LEFT_CENTERING
+                ColorContourCamera.Mode.SINGLE_TARGET
         );
         camera.startAsync();
 

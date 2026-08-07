@@ -7,7 +7,7 @@ import org.firstinspires.ftc.teamcode.core.ColorContourCamera;
 @TeleOp(name = "Right Camera Sticker Classification Test", group = "Test")
 public final class RightCameraClassificationTestOpMode extends LinearOpMode {
     @Override public void runOpMode() throws InterruptedException {
-        ColorContourCamera camera = new ColorContourCamera(hardwareMap, "webcam2", true, ColorContourCamera.Mode.RIGHT_CLASSIFICATION);
+        ColorContourCamera camera = new ColorContourCamera(hardwareMap, "webcam2", true, ColorContourCamera.Mode.MULTI_TARGET);
         camera.startAsync();
         telemetry.addLine("webcam2 only: sticker shape/texture classification"); telemetry.update();
         waitForStart();

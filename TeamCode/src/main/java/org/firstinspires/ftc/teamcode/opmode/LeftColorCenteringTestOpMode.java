@@ -16,7 +16,7 @@ public final class LeftColorCenteringTestOpMode extends LinearOpMode {
         RobotHardware robot = new RobotHardware(hardwareMap);
         Localizer localizer = robot.localizer;
         MecanumDrive drive = new MecanumDrive(hardwareMap, "leftfront", "rightfront", "leftback", "rightback", localizer);
-        ColorContourCamera camera = new ColorContourCamera(hardwareMap, "webcam1", true, ColorContourCamera.Mode.LEFT_CENTERING);
+        ColorContourCamera camera = new ColorContourCamera(hardwareMap, "webcam1", true, ColorContourCamera.Mode.SINGLE_TARGET);
         camera.startAsync();
         waitForStart();
         try {

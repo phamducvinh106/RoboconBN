@@ -22,7 +22,7 @@ public final class LeftCameraCenteringTestOpMode extends LinearOpMode {
                 hardwareMap, "leftfront", "rightfront", "leftback", "rightback", localizer
         );
         ColorContourCamera camera = new ColorContourCamera(
-                hardwareMap, CAMERA_NAME, true, ColorContourCamera.Mode.LEFT_CENTERING
+                hardwareMap, CAMERA_NAME, true, ColorContourCamera.Mode.SINGLE_TARGET
         );
         camera.startAsync();
 
