@@ -24,6 +24,13 @@ public final class LiftingSequenceOpMode extends LinearOpMode {
                     }
                     public void drive(double forward, double strafe) { drive.driveRobotCentric(forward, strafe, 0); }
                     public void stopDrive() { drive.stop(); }
+                    public boolean atPose(LiftingSequenceConfig.Pose target) {
+                        return Math.abs(robot.localizer.getX() - target.x) <= LiftingSequenceConfig.POSITION_TOLERANCE_CM
+                                && Math.abs(robot.localizer.getY() - target.y) <= LiftingSequenceConfig.POSITION_TOLERANCE_CM
+                                && Math.abs(robot.localizer.getHeadingDeg() - target.heading) <= LiftingSequenceConfig.HEADING_TOLERANCE_DEG;
+                    }
+                    public boolean released() { return false; }
+                    public double backOutDistanceCm() { return 0.0; }
                 });
         waitForStart();
         try {
