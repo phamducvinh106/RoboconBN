@@ -31,6 +31,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. */
 
 package org.firstinspires.ftc.robotcontroller.internal;
 
+import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.eventloop.opmode.OpModeManager;
 import com.qualcomm.robotcore.eventloop.opmode.OpModeRegister;
 
@@ -64,5 +65,17 @@ public class FtcOpModeRegister implements OpModeRegister {
         /**
          * Any manual OpMode class registrations should go here.
          */
+        registerTeamOpMode(manager, "org.firstinspires.ftc.teamcode.opmode.PiCdcCommTestOpMode");
+    }
+
+    private static void registerTeamOpMode(OpModeManager manager, String className) {
+        try {
+            Class<?> opModeClass = Class.forName(className);
+            if (OpMode.class.isAssignableFrom(opModeClass)) {
+                manager.register(opModeClass.asSubclass(OpMode.class));
+            }
+        } catch (ClassNotFoundException ignored) {
+            // TeamCode not present in this build.
+        }
     }
 }
