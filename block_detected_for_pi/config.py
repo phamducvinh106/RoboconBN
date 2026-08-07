@@ -6,7 +6,6 @@ from dataclasses import dataclass, field
 DEFAULT_BLOCK_TYPES = ("01", "02", "03", "04")
 PROTO_VERSION = 1
 REGISTER_COUNT = 6
-DEFAULT_UART_BAUD = 9600
 
 
 @dataclass(frozen=True, slots=True)

@@ -12,23 +12,21 @@
 | # | Question | Impact if disallowed |
 |---|----------|----------------------|
 | 1 | Is a Raspberry Pi 5 (on-robot, offline) acting as a **camera co-processor** allowed if detection runs locally and only metadata is sent to the Control Hub? | Must move YOLO inference onto the Hub or an approved camera module. |
-| 2 | Is **UART** from Pi GPIO14 to Control Hub digital input or UART debug port allowed? FTC marks UART as debug-only; Robocon rules may differ. | Need USB serial or approved alternative. |
-| 3 | Is **USB serial** (Pi USB gadget → Control Hub USB) allowed for metadata only? | Must use GPIO UART or integrate vision on Hub. |
+| 2 | Is **USB serial** (Pi USB gadget → Control Hub USB) allowed for metadata only? | Must integrate vision on Hub or use an approved alternative. |
 
 ## Current implementation
 
-- **Transport:** UART `$V1,...` frames @ **9600** baud (default, digital soft-UART)
-- **Hub reader:** soft-UART on digital `pi5UartRx` (max 19200 baud in code)
+- **Transport:** USB CDC JSON lines @ **115200** baud (Pi `/dev/ttyGS0` → Hub USB ACM)
+- **Hub reader:** `PiBlockReceiver` + `PiCdcCameraTransport`
 
 ## Wiring safety
 
-- Common ground between Pi and Control Hub
-- Logic levels: both 3.3 V — no level shifter needed
-- Route signal wires away from stepper motor power
+- Use a data-capable USB cable between Pi and Control Hub
+- Route USB cable away from stepper motor power
 
 ## Sign-off (fill before match)
 
 | Role | Name | Date | Transport approved |
 |------|------|------|--------------------|
-| Team lead | | | [ ] UART GPIO [ ] UART 3-pin [ ] USB |
+| Team lead | | | [ ] USB CDC |
 | Referee | | | |

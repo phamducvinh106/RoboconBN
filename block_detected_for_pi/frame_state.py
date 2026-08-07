@@ -21,7 +21,7 @@ class RegisterState:
 
 
 class RegisterFile:
-    """Thread-safe 6-byte logical frame used for UART publish + heartbeat tracking."""
+    """Thread-safe 6-byte logical frame used for CDC publish + heartbeat tracking."""
 
     def __init__(self) -> None:
         self._lock = threading.Lock()

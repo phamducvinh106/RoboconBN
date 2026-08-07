@@ -69,10 +69,6 @@ OFFLINE_CORE = (
     "LiftingSequenceStateMachine.java",
     "Pi5CameraSnapshot.java",
     "Pi5PayloadDecoder.java",
-    "Pi5UartCameraTransport.java",
-    "Pi5UartFrameCodec.java",
-    "Pi5UartLineReader.java",
-    "BufferPi5UartLineReader.java",
     "ReleaseBackoutSensorManager.java",
     "StepperElevatorManager.java",
 )
@@ -95,7 +91,7 @@ SUITES: tuple[Suite, ...] = (
     Suite(
         "lifting-hardware",
         "java_offline",
-        "Manager contracts + Pi5 UART payload decode gates",
+        "Manager contracts + Pi5 payload decode gates",
         main_class="org.firstinspires.ftc.teamcode.test.LiftingHardwareManagerTest",
         sources=tuple(f"core/{name}" for name in OFFLINE_CORE) + ("test/LiftingHardwareManagerTest.java",),
     ),
@@ -122,13 +118,6 @@ SUITES: tuple[Suite, ...] = (
         ),
     ),
     Suite(
-        "pi5-uart",
-        "java_offline",
-        "Pi5 UART $V1 frame codec + transport decode",
-        main_class="org.firstinspires.ftc.teamcode.test.Pi5UartTransportTest",
-        sources=tuple(f"core/{name}" for name in OFFLINE_CORE) + ("test/Pi5UartTransportTest.java",),
-    ),
-    Suite(
         "localizer-calibration",
         "java_ftc",
         "Localizer calibration contract (needs FTC SDK classpath)",
@@ -153,10 +142,10 @@ SUITES: tuple[Suite, ...] = (
         python_module="block_detected_for_pi.test_frame_state",
     ),
     Suite(
-        "python-uart",
+        "python-cdc",
         "python",
-        "Pi5 UART $V1 frame CRC + publisher",
-        python_module="block_detected_for_pi.test_uart",
+        "USB CDC JSON packet shape for Hub receiver",
+        python_module="block_detected_for_pi.test_cdc",
     ),
 )
 

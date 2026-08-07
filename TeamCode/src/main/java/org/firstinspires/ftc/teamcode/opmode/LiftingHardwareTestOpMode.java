@@ -57,13 +57,13 @@ public final class LiftingHardwareTestOpMode extends LinearOpMode {
         ReleaseBackoutSensorManager release = new ReleaseBackoutSensorManager(
                 () -> !robot.endstop1.getState(), poseSource(pose));
         CameraAdapterManager cameras = new CameraAdapterManager(
-                Pi5CameraTransportFactory.createWithHubPolling(hardwareMap, config, System::nanoTime, this::idle),
+                Pi5CameraTransportFactory.create(hardwareMap, config, System::nanoTime),
                 config.sensorStaleNs);
         hardwareMap.get(WebcamName.class, "webcam2");
 
         telemetry.addLine("LOW POWER HARDWARE COMMUNICATION TEST");
         telemetry.addLine("A=home  B=READY1  X=PLACE  Y=HOLD  Dpad=IR/pose  LB/RB=cameras");
-        telemetry.addLine("Pi5 UART camera via pi5UartRx; dual webcam payload");
+        telemetry.addLine("Pi5 USB CDC camera; dual webcam payload");
         telemetry.update();
         waitForStart();
         boolean lastA = false, lastB = false, lastX = false, lastY = false;

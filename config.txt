@@ -1,3 +1,0 @@
-enable_uart=1
-dtoverlay=disable-bt
-
