@@ -24,13 +24,13 @@
 
 ### Vision Modes
 
-- [ ] **VIS-01**: `TemplateMatchCamera` exposes explicit `SINGLE_TARGET` and `MULTI_TARGET` modes without duplicating camera lifecycle code.
-- [ ] **VIS-02**: `SINGLE_TARGET` tracks the left pallet within the one-block FOV and minimizes camera-to-left-pallet center error fast enough for lateral centering.
-- [ ] **VIS-03**: `SINGLE_TARGET` exposes target center, `dxPx`, `dyPx`, confidence, validity, and stale-result age for fork alignment.
-- [ ] **VIS-04**: `MULTI_TARGET` classifies the right and left blocks during scan passes, returning one type label and confidence for each block before centering.
-- [ ] **VIS-05**: `MULTI_TARGET` extracts threshold-qualified candidates and suppresses overlapping duplicate boxes before ranking.
-- [ ] **VIS-06**: Both modes reject invalid templates/frames and keep camera thread safe under start, stop, and failure paths.
-- [ ] **VIS-07**: Vision thresholds, active-level crop/region-of-interest, NMS/min-distance, temporal hold, and center policy are measurable constants, not hidden magic behavior.
+- [ ] **VIS-01**: Shared ORB vision exposes explicit `SINGLE_TARGET` and `MULTI_TARGET` roles without duplicate pipelines: each physical webcam has exactly one lifecycle/session and one frame ORB extraction, while each logical `OrbTemplateCamera` evaluator owns exactly one immutable target template.
+- [ ] **VIS-02**: `SINGLE_TARGET` on `webcam1` tracks the left pallet within the one-block FOV and minimizes camera-to-left-pallet center error fast enough for lateral centering; `webcam2` does not authorize centering.
+- [ ] **VIS-03**: `SINGLE_TARGET` on `webcam1` exposes transformed target center, `dxPx`, `dyPx`, hard validity, observation age, detection state, rejection reason, match/inlier counts, inlier ratio, Hamming/reprojection medians, coverage, and projected-area metrics for fork alignment; no ambiguous confidence value authorizes movement.
+- [ ] **VIS-04**: Both `webcam1` and `webcam2` support classification during scan passes through logical per-template `OrbTemplateCamera` evaluators fed by their physical webcam session, with one immutable target template and one qualified result per evaluator before centering.
+- [ ] **VIS-05**: Per-template evaluators use shared frame ORB descriptors and hard geometric gates, then apply deterministic same-frame ranking and per-target temporal filtering without extracting frame features inside each evaluator.
+- [ ] **VIS-06**: Both roles reject invalid templates/frames and keep camera thread safe under generation-safe asynchronous start, idempotent stop, failure, stale result, unsupported control, and native-resource release paths.
+- [ ] **VIS-07**: ORB/template assets, match and geometry gates, SEARCH/TRACK ROI policy, temporal policy, camera controls, center policy, and processing limits are measurable named tunable defaults. Full/large search runs every second frame, expanded tracking ROI runs every locked frame, controls expose support/readback fallback, and latency/FPS metrics remain bounded for RK3328/1 GB hardware.
 
 ### Mechanism and Sensors
 
@@ -50,7 +50,7 @@
 
 ### Verification
 
-- [ ] **TEST-01**: Offline tests cover mode selection, center math, candidate ranking, NMS/min-distance, confidence thresholds, and stale results.
+- [ ] **TEST-01**: Deterministic offline tests call production scalar seams for match selection, transformed-center and quadrilateral geometry, explicit quality gates, temporal acquisition/smoothing/velocity/misses, SEARCH/TRACK ROI, same-frame ranking, one-extraction fan-out accounting, processing budget, stale observations, and movement authorization; hardware tuning separately measures controls, jitter, reacquisition, false locks, and timing.
 - [x] **TEST-02**: Hardware test OpMode verifies exact device names, directions, encoder signs, servo states, IR polarity, endstop, and stepper pulses.
 - [ ] **TEST-03**: Field test covers randomized shelf positions, all block classes, failed pickup, reset, placement, and 240-second budget.
 
@@ -66,7 +66,7 @@
 |---------|--------|
 | AprilTag localization | Not requested; retain odometry and OpenCV scope |
 | Deep-learning detector | Adds dependency and tuning burden; no current requirement |
-| Separate `SingleTargetCamera`/`MultiTargetCamera` classes | One shared `TemplateMatchCamera` with modes prevents lifecycle duplication |
+| Camera architecture outside the unified ORB physical-session/logical-evaluator path | Phase 8 is limited to consolidating ORB tracking; `TemplateMatchCamera` remains an isolated benchmark |
 | Automatic task 2 before task 1 completion | Forbidden by O2 rules |
 
 ## Traceability
@@ -75,7 +75,8 @@
 |-------------|-------|--------|
 | LOC-01–LOC-05 | Phase 1 | Pending |
 | LIFT-01–LIFT-04, MECH-01–MECH-05, AUTO-01, AUTO-05 | Phase 2 | Pending |
-| VIS-01–VIS-07, TEST-01 | Phase 3 | Pending |
+| VIS-01, VIS-04, VIS-05 | Phases 3 and 8 | Pending |
+| VIS-02, VIS-03, VIS-06, VIS-07, TEST-01 | Phases 7 and 8 | Pending |
 | AUTO-02–AUTO-04 | Phase 4 | Pending |
 | TEST-02–TEST-03 | Phase 5 | Pending |
 

@@ -1,78 +1,68 @@
-# Phase 7 Validation Contract
+# Phase 7 Validation Contract: Single-Target ORB Accuracy
 
-## Plan Coverage
+## Scope Gate
 
-- `07-01-PLAN.md`: shared `ColorContourCamera` ORB/template lifecycle, explicit `webcam1`/`webcam2`, centering authority, deterministic candidate policy.
-- `07-02-PLAN.md`: offline plain-Java assertions and this executable validation contract.
-- `07-03-PLAN.md`: transport boundary remains deferred; no UART/20-bit/I2C production implementation.
+Allowed production change: `TeamCode/src/main/java/org/firstinspires/ftc/teamcode/core/SingleTargetCamera.java`.
 
-## Requirement and Decision Coverage
+Allowed support changes: `OrbTarget1TestOpMode.java`, `CameraContinuationTest.java`, and Phase 7 planning evidence.
 
-- `VIS-01`: one shared explicit two-mode API in `ColorContourCamera`.
-- `VIS-02`/`VIS-03`: signed center metrics, finite-value and freshness movement gates.
-- `VIS-04`/`VIS-05`: both webcams classify; ORB/template thresholds, deterministic ranking, bounded overlap/NMS/min-distance suppression, stable candidate policy.
-- `VIS-06`/`VIS-07`: lifecycle generation guards, idempotent start/stop, resource release, invalid/error/stale fail-closed results.
-- `TEST-01`: `CameraContinuationTest` covers modes, webcam identity, thresholds, ranking bound, lifecycle states, source constraints, and fail-closed boundaries.
-- `D-01`: existing lifecycle owner retained; no separate camera class.
-- `D-02`: shared lifecycle/result contract.
-- `D-03`: both webcams classify; only `webcam1` permits `SINGLE_TARGET` centering.
-- `D-04`: plain Java `main`/`AssertionError`; no JUnit or dependency.
-- `D-05`: generation, invalidation, idempotent lifecycle, and stale/error rejection.
+Excluded: `TemplateMatchCamera`, `OrbTemplateCamera`, `FourTargetCameraOrchestrator`, multi-target classification, UART, I2C, packed transport, lifting, autonomous integration, other camera consumers, and dependencies.
 
-## Research Constraint Audit
+## Ordered Gates
 
-- ORB/template matching only; no HSV/YCrCb thresholding or contour extraction.
-- No new dependency; existing pinned FTC/EasyOpenCV/OpenCV stack only.
-- No I2C, UART wiring, packed 20-bit decoder, or production `DigitalUartRx` path.
-- `DigitalUartRx` remains bench-only. Protocol framing, byte order, checksum, timeout, timestamp units, and 20-bit payload remain gated for future decision.
-- Deferred AprilTags, neural detection, adaptive compensation, camera multiplexing, and calibration remain out of scope.
+1. Compile and deterministic offline policy checks:
+   `.\gradlew.bat :TeamCode:compileDebugJavaWithJavac :TeamCode:cameraContinuationTest --offline`
+2. Run hardware only after gate 1 passes.
+3. Use `ORB Target 1 Test`; camera must open during FTC `INIT` and release safely on stop/error.
+4. Collect at least 300 processed frames after warm-up for each condition below.
+5. Record actual metrics and final tuned named defaults in `07-VERIFICATION.md`.
 
-## Automated Checks
+## Deterministic Offline Coverage
 
-- Windows Gradle compile: `./gradlew.bat :TeamCode:compileDebugJavaWithJavac`.
-- Offline assertions: `java -ea -cp TeamCode/build/intermediates/javac/debug/compileDebugJavaWithJavac/classes org.firstinspires.ftc.teamcode.test.CameraContinuationTest`.
-- Expected output: `BUILD SUCCESSFUL`; `CameraContinuationTest passed 20 checks`.
-- Source audit: one `ColorContourCamera` lifecycle owner, explicit names, ORB/descriptor matcher, no HSV/YCrCb/contours, no I2C/UART camera path.
+- Match qualification: absolute Hamming, ratio, deterministic sort, unique scene correspondence, cap, minimum count, template coverage, and quadrants.
+- Homography: finite 3x3 matrix, inliers, inlier ratio, median/p90 reprojection, inlier coverage, convexity/winding, area, bounds, edge, diagonal, and transformed template center.
+- Temporal: three-frame acquisition, jitter suppression, monotonic movement response, single spike, confirmed relocation, miss hold, time/count expiry, stale/future clock, stop/error, non-finite values, processing budget, and deterministic replay.
+- Tests invoke production scalar policy and add no dependency.
 
-## Manual FTC Acceptance
+## Hardware Conditions and Initial Acceptance
 
-- Physically confirm configured `webcam1` and `webcam2` identities; missing `webcam2` must fail normal `HardwareMap` lookup and never alias `webcam1`.
-- Confirm both cameras classify configured templates; only `webcam1` `SINGLE_TARGET` may authorize centering.
-- Confirm stale, invalid, closed, and error results never authorize movement.
-- Confirm start twice opens one stream; stop twice does not throw; camera stop releases pipeline resources.
+### Stationary Centered Target
 
-## Deferred Transport Boundary: 07-03
+- Samples: at least 300 processed frames after warm-up.
+- Qualified observations after acquisition: at least 95 percent.
+- Filtered radial jitter p95: at most 4 px.
+- Accepted center jump: none above 35 px.
+- Record raw jitter, filtered jitter, acquisition frames/ms, rejection reasons, FPS, and processing p50/p95/max.
 
-Phase 7 has one transport path: no production `DigitalUartRx`, `CameraFrameContract`, `CameraAdapterManager`, packed 20-bit decoder, I2C wiring, or UART wiring. Physical protocol evidence must precede any future transport implementation.
+### Lateral Movement
 
+- Samples: at least 300 processed frames at recorded bench speed.
+- Filtered lag p95: below 40 px.
+- No stale result authorizes movement.
+- Coherent movement remains trackable without repeated false relocation rejection.
+- Record acquisition/relocation latency, lag, outlier count, FPS, and processing p50/p95/max.
 
-## Automated Checks
+### Negative Scene
 
-- Compile TeamCode with existing Windows Gradle wrapper: `.\\gradlew.bat :TeamCode:compileDebugJavaWithJavac`.
-- Run offline camera test main class through repository's existing Java test convention.
-- Verify source contains one camera lifecycle owner and explicit `webcam1`/`webcam2` hardware mappings.
-- Verify only ORB/template matching is referenced for detection; verify no HSV/YCrCb thresholding, contour extraction/classification, candidate segmentation, or related scope is added, and no new dependency is added.
-- Verify plan mapping includes `07-01`, `07-02`, and `07-03`.
-- Verify Phase 7 adds no production `DigitalUartRx`, `CameraFrameContract`, `CameraAdapterManager`, packed 20-bit decoder, I2C wiring, or UART wiring.
-- Verify `PlaceholderCameraTransport` remains invalid/fail-closed and `DigitalUartRx` remains bench-only.
-- Verify no production camera consumer constructs or references `DigitalUartRx`; its only runtime use is `DigitalUartRxTestOpMode` for bench observation.
-- Verify no production camera wiring uses `I2C`, `UART`, packed 20-bit decoding, or a replacement transport. `LiftingSequenceOpMode` and `LiftingHardwareTestOpMode` retain `PlaceholderCameraTransport`, which always returns invalid frames.
-- Require future protocol evidence before decoder work: physical framing and idle level, byte order, checksum, timestamp source/units, timeout/freshness, channel identity, partial-read behavior, reserved-code rejection, and atomic snapshot semantics.
+- Samples: at least 300 processed frames; include repetitive texture when available.
+- LOCKED acquisitions: zero.
+- Movement-authorized results: zero.
+- Record first-failure rejection distribution, closest quality observed, FPS, and processing p50/p95/max.
 
-## Behavior Checks
+### Processing Budget
 
-- Both `webcam1` and `webcam2` use configured ORB/template assets for block-type classification, applying descriptor/match thresholds and already-scoped geometric constraints, then returning distinct stable labels after deterministic ranking and overlap/NMS/duplicate suppression.
-- Only `webcam1` may run `SINGLE_TARGET` for left-pallet centering and expose center/error/confidence/validity/timestamp; `webcam2` classification never authorizes centering.
-- Start called twice does not open duplicate streams; stop called twice does not throw.
-- Open/start error yields error state; closed/error/stale results cannot command movement.
-- Pipeline resources release on stop and invalid frames do not publish usable detections.
-- Existing left centering and right classification OpModes compile against final API.
+- Processing p95: at most 100 ms.
+- Sustained over-budget run: no longer than 3 consecutive frames.
+- If budget fails, reduce ORB feature count before weakening geometry or stale-result gates.
 
-## Deferred Transport Boundary: 07-03
+## Tuning Order
 
-Phase 7 has one transport path: no production DigitalUartRx, CameraFrameContract, CameraAdapterManager, packed 20-bit decoder, I2C wiring, or UART wiring. DigitalUartRx remains bench-only. PlaceholderCameraTransport must remain invalid and fail-closed. Framing, endian order, checksum, idle level, timestamp source/units, timeout, channel identity, partial-read handling, and packed 20-bit decoding require explicit physical protocol evidence and a future phase decision.
+1. Eliminate false locks using descriptor, coverage, reprojection, and projected-geometry evidence.
+2. Recover positive recall only after negative-scene acceptance passes.
+3. Adjust acquisition, smoothing, and outlier constants from measured jitter, movement lag, and FPS.
+4. Keep thresholds as named `SingleTargetCamera` constants unless existing project configuration already provides a matching camera-tuning pattern.
+5. Rerun offline checks and every failed hardware condition after each final threshold change.
 
-## Manual FTC Acceptance
+## Required Evidence
 
-- Confirm configured `webcam1` and `webcam2` identities physically; missing webcam2 must not alias webcam1.
-- Confirm stale, invalid, closed, and error camera results never authorize movement.
+Record template asset, lighting/distance, sample counts, stationary jitter, accepted jumps, negative false locks, acquisition latency, movement lag, FPS, processing p50/p95/max, over-budget streak, rejection counts, final constants, lifecycle outcome, and blockers. Hardware remains unapproved until all measurements exist.

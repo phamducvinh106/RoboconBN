@@ -6,11 +6,6 @@ import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DigitalChannel;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 import com.qualcomm.robotcore.hardware.Servo;
-import org.firstinspires.ftc.robotcore.external.hardware.camera.WebcamName;
-
-import org.firstinspires.ftc.teamcode.core.CameraAdapterManager;
-import org.firstinspires.ftc.teamcode.core.CameraChannel;
-import org.firstinspires.ftc.teamcode.core.CameraFrameContract;
 import org.firstinspires.ftc.teamcode.core.EncoderLocalizerManager;
 import org.firstinspires.ftc.teamcode.core.EndstopManager;
 import org.firstinspires.ftc.teamcode.core.ForkServoManager;
@@ -20,7 +15,6 @@ import org.firstinspires.ftc.teamcode.core.LiftingSequenceConfig;
 import org.firstinspires.ftc.teamcode.core.LiftingSequenceConfigLoader;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import org.firstinspires.ftc.teamcode.core.Pi5CameraTransportFactory;
 import org.firstinspires.ftc.teamcode.core.ReleaseBackoutSensorManager;
 import org.firstinspires.ftc.teamcode.core.RobotHardware;
 import org.firstinspires.ftc.teamcode.core.StepperElevatorManager;
@@ -56,14 +50,9 @@ public final class LiftingHardwareTestOpMode extends LinearOpMode {
         });
         ReleaseBackoutSensorManager release = new ReleaseBackoutSensorManager(
                 () -> !robot.endstop1.getState(), poseSource(pose));
-        CameraAdapterManager cameras = new CameraAdapterManager(
-                Pi5CameraTransportFactory.createWithHubPolling(hardwareMap, config, System::nanoTime, this::idle),
-                config.sensorStaleNs);
-        hardwareMap.get(WebcamName.class, "webcam2");
-
         telemetry.addLine("LOW POWER HARDWARE COMMUNICATION TEST");
-        telemetry.addLine("A=home  B=READY1  X=PLACE  Y=HOLD  Dpad=IR/pose  LB/RB=cameras");
-        telemetry.addLine("Pi5 UART camera via pi5UartRx; dual webcam payload");
+        telemetry.addLine("A=home  B=READY1  X=PLACE  Y=HOLD  Dpad=IR/pose");
+        telemetry.addLine("ORB camera tested via OrbTarget1TestOpMode");
         telemetry.update();
         waitForStart();
         boolean lastA = false, lastB = false, lastX = false, lastY = false;
@@ -77,8 +66,6 @@ public final class LiftingHardwareTestOpMode extends LinearOpMode {
                 lastA = gamepad1.a; lastB = gamepad1.b; lastX = gamepad1.x; lastY = gamepad1.y;
                 if (gamepad1.dpad_up) elevator.moveToward(LiftingSequenceConfig.ElevatorTarget.LIFT1.steps, now);
                 if (gamepad1.dpad_down) elevator.stop();
-                CameraFrameContract left = cameras.reading(CameraChannel.WEBCAM1);
-                CameraFrameContract right = cameras.reading(CameraChannel.WEBCAM2);
                 HardwareContracts.PoseReading reading = pose.reading();
                 telemetry.addData("devices", "step dir endstop1 servoLeft servoRight leftIR rightIR webcam1 webcam2");
                 telemetry.addData("step/dir", "%s / %s (pulsing=%s)", step.getState(), dir.getState(), elevator.pulsing());
@@ -88,10 +75,6 @@ public final class LiftingHardwareTestOpMode extends LinearOpMode {
                 telemetry.addData("IR", "left=%s right=%s both=%s polarity=active-low", ir.leftActive(), ir.rightActive(), ir.bothActive());
                 telemetry.addData("pose", "valid=%s x=%.2f y=%.2f heading=%.2f", reading.valid, reading.xCm, reading.yCm, reading.headingDeg);
                 telemetry.addData("release/backout", "released=%s x=%.2f y=%.2f", release.released(), release.reading().xCm, release.reading().yCm);
-                telemetry.addData("webcam1", "valid=%s fresh=%s dx=%.1f type=%s payload=0x%05X hb=%d",
-                        left.valid, cameras.movementAuthorized(CameraChannel.WEBCAM1, now), left.dxPx, left.blockType, left.rawPayload, left.heartbeat);
-                telemetry.addData("webcam2", "valid=%s fresh=%s type=%s payload=0x%05X hb=%d",
-                        right.valid, cameras.movementAuthorized(CameraChannel.WEBCAM2, now), right.blockType, right.rawPayload, right.heartbeat);
                 telemetry.addData("config", "version=%d fingerprint=%s timing=%d/%d ns", config.version, config.fingerprint, config.stepHighNs, config.stepLowNs);
                 telemetry.update();
                 idle();

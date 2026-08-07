@@ -46,6 +46,7 @@ Run `/gsd-plan-phase 6` to create executable plans for bounded automatic PID tun
 ### Roadmap Evolution
 
 - Phase 6 added: Automatic PID tuning OpMode for MecanumDrive within a bounded 50 x 50 cm square
+- Phase 8 added: Unify and harden ORB planar tracking with geometric verification, temporal filtering, dynamic ROI, shared per-webcam extraction, and fixed camera controls
 
 ## Blockers / Measurements Needed
 
@@ -63,8 +64,14 @@ Run `/gsd-plan-phase 6` to create executable plans for bounded automatic PID tun
 | Phase 06-automatic-pid-tuning-opmode-for-mecanumdrive-within-a-bounde P01 | 8 min | 3 tasks | 2 files |
 | Phase 02-two-mode-opencv-camera P02 | 15 min | 2 tasks | 3 files |
 
+### Quick Tasks Completed
+
+| # | Description | Date | Directory |
+|---|-------------|------|-----------|
+| 260808-5az | ORB v2: merge geometry verification temporal gates into OrbTemplateCamera | 2026-08-08 | [260808-5az-orb-v2-merge-geometry-verification-tempo](./quick/260808-5az-orb-v2-merge-geometry-verification-tempo/) |
+
 ## Session
 
-**Last session:** 2026-08-07T08:11:13.499Z
-**Stopped at:** Completed 02-02-PLAN.md
+**Last session:** 2026-08-08
+**Stopped at:** Quick task 260808-5az complete
 **Resume file:** None

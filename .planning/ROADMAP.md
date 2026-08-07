@@ -2,7 +2,7 @@
 
 ## Overview
 
-Start with a verified hardware contract, then improve the existing `TemplateMatchCamera` into two measurable modes, add safe elevator/fork and IR behavior, compose the autonomous state machine, and validate the complete O2 flow on a full-size field.
+Start with a verified hardware contract, then continue the existing camera lifecycle with ORB/template matching in two measurable modes, add safe elevator/fork and IR behavior, compose the autonomous state machine, and validate the complete O2 flow on a full-size field.
 
 ## Phases
 
@@ -133,21 +133,34 @@ Plans:
 
 - [ ] TBD (run /gsd-plan-phase 6 to break down)
 
-### Phase 7: Camera/OpenCV Continuation (superseded by Phase 3 camera scope)
+### Phase 7: Single-Target ORB Accuracy Replan
 
-**Goal:** Continue camera work from `ColorContourCamera.java` with one lifecycle-safe shared API: `SINGLE_TARGET` centering on `webcam1` and `MULTI_TARGET` classification on `webcam2`.
-**Requirements**: VIS-01, VIS-02, VIS-03, VIS-04, VIS-05, VIS-06, VIS-07, TEST-01
+**Goal:** Make `SingleTargetCamera` produce stable, qualified target centers on `webcam1` without weakening camera lifecycle safety or processing bounds.
+**Requirements**: VIS-02, VIS-03, VIS-06, VIS-07, TEST-01
 **Depends on:** Phase 6
-**Plans:** 0/2 plans executed
+**Plans:** 0/3 plans executed
 
 **Success Criteria**:
 
-1. One shared `ColorContourCamera` lifecycle exposes explicit `SINGLE_TARGET` and `MULTI_TARGET` policies with measurable center, confidence, validity, threshold, overlap, and freshness behavior.
-2. `webcam1` is explicitly used for left-pallet centering and `webcam2` is explicitly used for multi-target classification; no silent camera fallback exists.
-3. Start, stop, open failure, released resources, and stale results are safe; stale/error/closed results cannot command movement.
-4. Offline dependency-free tests cover center math, candidate ranking, overlap suppression, confidence thresholds, mode selection, and stale-result rejection.
+1. Match qualification rejects weak, duplicate, spatially clustered, or insufficient correspondences before homography.
+2. Homography publication requires finite low-error inliers and plausible projected target geometry; center comes from transformed template center.
+3. Three coherent observations acquire lock; adaptive smoothing suppresses jitter; isolated jumps, misses, stale data, camera errors, and over-budget processing fail closed under explicit states.
+4. Dependency-free checks exercise production geometry and temporal policy deterministically; telemetry exposes raw/filtered center, rejection, quality, jitter, acquisition, FPS, and processing metrics.
+5. Hardware acceptance records stationary jitter, negative-scene false locks, acquisition latency, movement response, FPS, and processing latency over repeatable 300-frame conditions.
 
 Plans:
 
-- [ ] 07-01-PLAN.md — Normalize shared camera contract, lifecycle safety, explicit webcam mapping, and OpMode consumers.
-- [ ] 07-02-PLAN.md — Add offline camera continuation tests and finalize validation.
+- [ ] 07-01-PLAN.md — Strengthen match qualification and homography geometry validation in `SingleTargetCamera`.
+- [ ] 07-02-PLAN.md — Add adaptive temporal smoothing, stable-frame acquisition, outlier confirmation, miss hold, and stale policy.
+- [ ] 07-03-PLAN.md — Add compact tuning telemetry, complete deterministic offline checks, and run measured hardware acceptance.
+
+### Phase 8: Unify and harden ORB planar tracking with geometric verification, temporal filtering, dynamic ROI, shared per-webcam extraction, and fixed camera controls
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 7
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (run /gsd-plan-phase 8 to break down)

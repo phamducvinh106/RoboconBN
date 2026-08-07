@@ -138,6 +138,15 @@ public final class MecanumDrive {
         setMotorPowers(flPower, frPower, blPower, brPower);
     }
 
+    public void robotCentric(double forward, double strafe, double rotate) {
+        state = DriveState.IDLE;
+        double denominator = Math.max(1.0, Math.abs(forward) + Math.abs(strafe) + Math.abs(rotate));
+        fl.setPower((forward + strafe + rotate) / denominator);
+        fr.setPower((forward - strafe - rotate) / denominator);
+        bl.setPower((forward - strafe + rotate) / denominator);
+        br.setPower((forward + strafe - rotate) / denominator);
+    }
+
     public void stop() {
         state = DriveState.IDLE;
         cmdForward = cmdStrafe = cmdRotate = 0.0;

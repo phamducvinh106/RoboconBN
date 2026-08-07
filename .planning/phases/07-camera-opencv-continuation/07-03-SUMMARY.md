@@ -1,62 +1,60 @@
 ---
 phase: 07-camera-opencv-continuation
 plan: 03
-subsystem: camera-transport-boundary
-tags: [opencv, transport, fail-closed, validation]
-dependency_graph:
-  requires: [07-01, 07-02]
-  provides: [deferred-transport-validation, fail-closed-camera-seam]
-  affects: [future-protocol-phase]
+subsystem: validation
+status: blocked
+tags: [opencv, validation, transport-boundary]
+requires: [07-01, 07-02]
+provides: [honest offline/hardware gate, deferred transport audit]
+affects: [phase verification, hardware acceptance]
 tech_stack:
   added: []
-  patterns: [plain-java-source-audit, fail-closed-placeholder]
-key_files:
+  patterns: [offline-first acceptance gate, fail-closed deferred transport]
+key-files:
   created: [.planning/phases/07-camera-opencv-continuation/07-03-SUMMARY.md]
-  modified: [.planning/phases/07-camera-opencv-continuation/07-VALIDATION.md]
+  modified:
+    - .planning/phases/07-camera-opencv-continuation/07-VALIDATION.md
+    - .planning/phases/07-camera-opencv-continuation/07-VERIFICATION.md
 decisions:
-  - Keep PlaceholderCameraTransport invalid and fail-closed.
-  - Keep DigitalUartRx bench-only; defer production parser and protocol wiring.
+  - Do not claim hardware acceptance while offline test is blocked.
+  - Keep UART, I2C, packed 20-bit parsing, and transport replacement deferred.
 metrics:
-  duration: "under 10 minutes"
-  completed_date: 2026-08-08
-status: complete
+  duration: unknown
+  completed: 2026-08-08
 ---
+# Phase 07 Plan 03: Acceptance Gate Summary
 
-# Phase 07 Plan 03: Deferred Camera Transport Boundary Summary
+Compile evidence and transport-boundary audit recorded. Hardware acceptance remains blocked.
 
-Transport boundary remains fail-closed and explicitly deferred pending physical protocol evidence.
+## Completed
 
-## Completed Tasks
-
-1. Preserved existing `PlaceholderCameraTransport` behavior. It returns `CameraFrameContract.invalid(...)` for every read and was not modified.
-2. Extended `07-VALIDATION.md` with source-audit requirements proving no production UART, I2C, packed 20-bit decoder, or replacement transport wiring; documented `DigitalUartRx` bench-only status and required future protocol evidence.
-
-## Verification
-
-- `cmd.exe /c gradlew.bat :TeamCode:compileDebugJavaWithJavac` passed.
-- `java -ea -cp TeamCode/build/intermediates/javac/debug/compileDebugJavaWithJavac/classes org.firstinspires.ftc.teamcode.test.CameraContinuationTest` passed: `CameraContinuationTest passed 20 checks`.
-- Source audit confirmed `DigitalUartRx` is used only by `DigitalUartRxTestOpMode`; production camera consumers retain `PlaceholderCameraTransport`.
-- `PlaceholderCameraTransport` remains invalid/fail-closed.
-- No production packed 20-bit decoder, I2C camera wiring, or UART camera wiring added by this plan.
-
-## Protocol Evidence Required Before Future Implementation
-
-Future phase must obtain explicit evidence for physical framing and idle level, byte order, checksum, timestamp source and units, timeout/freshness, channel identity, partial-read handling, reserved-code rejection, and atomic snapshot semantics. No movement authorization may rely on raw, partial, stale, malformed, or unknown-channel data.
+- Confirmed compile pass from 07-01/07-02 evidence.
+- Recorded offline test blocker: missing EasyOpenCV runtime classpath.
+- Recorded missing explicit two-webcam orchestration, four target assignments, and template assets.
+- Confirmed `PlaceholderCameraTransport` remains invalid/fail-closed.
+- Confirmed `DigitalUartRx` remains bench-only; no production UART, I2C, packed 20-bit parser, or transport replacement added.
+- Preserved exact next gate: verified EasyOpenCV runtime classpath, offline assertion pass, then orchestration/assets and FTC hardware checklist.
 
 ## Deviations from Plan
 
-None - plan executed exactly as written.
+### Deferred Issues
+
+1. Human hardware checkpoint not executed because offline test is blocked.
+2. No source implementation added; orchestration/assets remain deferred from 07-01/07-02.
+
+## Verification
+
+- `.\gradlew.bat :TeamCode:compileDebugJavaWithJavac` — PASS per prior plan evidence.
+- `CameraContinuationTest` — BLOCKED by missing EasyOpenCV runtime classpath.
+- Validation and verification artifacts — updated; linter reports no errors.
 
 ## Known Stubs
 
-None introduced. Existing placeholder transport is intentional fail-closed scope and remains documented for future replacement only after protocol decision.
-
-## Commit
-
-- `940f482` — `docs(07-03): document deferred camera transport boundary`
+- `PlaceholderCameraTransport` intentionally returns invalid frames pending physical protocol evidence.
+- Template assets and external two-webcam orchestration are absent; hardware acceptance cannot proceed.
 
 ## Self-Check: PASSED
 
-- Summary file exists.
-- Validation update committed as `940f482`.
-- Compile and camera assertion checks passed.
+- Updated validation and verification artifacts exist.
+- Deferred transport boundary is explicit.
+- Hardware acceptance is explicitly not approved.

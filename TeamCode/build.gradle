@@ -27,3 +27,15 @@ android {
 dependencies {
     implementation project(':FtcRobotController')
 }
+
+// Runs dependency-free policy assertions against compiled production classes.
+tasks.register('cameraContinuationTest', JavaExec) {
+    dependsOn 'compileDebugJavaWithJavac'
+    classpath = files(
+            "$buildDir/intermediates/javac/debug/compileDebugJavaWithJavac/classes",
+            "$rootProject.projectDir/FtcRobotController/build/intermediates/compile_library_classes_jar/debug/bundleLibCompileToJarDebug/classes.jar",
+            fileTree(System.getProperty('user.home') + '/.gradle/caches') { include '**/*.jar' }
+    )
+    mainClass = 'org.firstinspires.ftc.teamcode.test.CameraContinuationTest'
+    jvmArgs '-ea'
+}
