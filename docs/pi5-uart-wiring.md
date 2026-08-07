@@ -8,8 +8,10 @@
    python3 tools/pi5_protocol_e2e.py
    ```
 2. **Pi UART enable** — see [Pi setup](#pi-setup) below; verify `ls -l /dev/serial0`.
+   Optional loopback (jumper GPIO14↔GPIO15): `bash tools/pi5_uart_loopback_check.sh`
 3. **Wire Pi → Hub** — GPIO14 TX → `pi5UartRx`, GND → GND.
 4. **Hub Robot Config** — add digital input `pi5UartRx` only (no motors required for link test).
+   Confirm the **physical digital port number** (0–7) matches the wire — not the UART 3-pin debug port.
 5. **Deploy TeamCode** APK to Control Hub.
 6. **Link test** — Pi: `python3 tools/pi5_bench.py --loop`; Hub: OpMode **Pi5 UART Communication Test**.
 7. **Vision** (after link stable ≥30s) — `python3 main.py --uart-port /dev/serial0`.
@@ -46,13 +48,13 @@ Reboot, then verify:
 
 ```bash
 ls -l /dev/serial0
-python3 tools/pi5_bench.py --mode uart --count 5 --uart-port /dev/serial0
+python3 tools/pi5_bench.py --mode uart --count 5 --port /dev/serial0
 ```
 
 Continuous heartbeat for link test:
 
 ```bash
-python3 tools/pi5_bench.py --loop --uart-port /dev/serial0 --baud 9600
+python3 tools/pi5_bench.py --loop --port /dev/serial0 --baud 9600
 ```
 
 Run vision + UART publish (after link test passes):

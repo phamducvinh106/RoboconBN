@@ -47,6 +47,10 @@ public final class Pi5UartCameraTransport implements HardwareContracts.CameraTra
         return new Diagnostics(bytesReceived, framesOk, decodeErrors, lastLine);
     }
 
+    public Pi5UartLineReader uartReader() {
+        return reader;
+    }
+
     private void refresh() {
         long now = clock.nowNs();
         byte[] chunk = reader.pollBytes();

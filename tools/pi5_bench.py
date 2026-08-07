@@ -98,7 +98,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--count", type=int, default=10, help="frames to send (ignored with --loop)")
     parser.add_argument("--loop", action="store_true", help="send frames until Ctrl+C")
     parser.add_argument("--interval", type=float, default=0.05, help="seconds between frames")
-    parser.add_argument("--port", default="/dev/serial0")
+    parser.add_argument("--port", "--uart-port", default="/dev/serial0")
     parser.add_argument("--baud", type=int, default=9600)
     parser.add_argument("--seconds", type=float, default=5.0)
     parser.add_argument("--mock", action="store_true")

@@ -2,14 +2,17 @@ package org.firstinspires.ftc.teamcode.opmode;
 
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
+import com.qualcomm.robotcore.hardware.DigitalChannel;
 
 import org.firstinspires.ftc.teamcode.core.CameraAdapterManager;
 import org.firstinspires.ftc.teamcode.core.CameraChannel;
 import org.firstinspires.ftc.teamcode.core.CameraFrameContract;
+import org.firstinspires.ftc.teamcode.core.FtcPi5SoftUartLineReader;
 import org.firstinspires.ftc.teamcode.core.LiftingSequenceConfig;
 import org.firstinspires.ftc.teamcode.core.LiftingSequenceConfigLoader;
 import org.firstinspires.ftc.teamcode.core.Pi5CameraTransportFactory;
 import org.firstinspires.ftc.teamcode.core.Pi5UartCameraTransport;
+import org.firstinspires.ftc.teamcode.core.Pi5UartLineReader;
 
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -40,14 +43,25 @@ public final class Pi5UartCommTestOpMode extends LinearOpMode {
         Pi5UartCameraTransport transport = (Pi5UartCameraTransport) Pi5CameraTransportFactory.create(
                 hardwareMap, config, System::nanoTime);
         CameraAdapterManager cameras = new CameraAdapterManager(transport, config.sensorStaleNs);
+        DigitalChannel rxPin = hardwareMap.get(DigitalChannel.class, config.pi5UartDeviceName);
+        Pi5UartLineReader uartReader = transport.uartReader();
+        FtcPi5SoftUartLineReader softUart = uartReader instanceof FtcPi5SoftUartLineReader
+                ? (FtcPi5SoftUartLineReader) uartReader
+                : null;
 
         telemetry.addLine("PI5 UART COMMUNICATION TEST");
         telemetry.addLine("Requires: digital input pi5UartRx (Pi GPIO14 TX -> this pin)");
-        telemetry.addLine("Pi: python tools/pi5_bench.py --loop --uart-port /dev/serial0");
+        telemetry.addLine("Verify Robot Config: pi5UartRx port matches physical wire (not UART debug port)");
+        telemetry.addLine("Pi: python tools/pi5_bench.py --loop --port /dev/serial0");
         telemetry.addData("config", "baud=%d device=%s staleMs=%.0f",
                 config.pi5UartBaud, config.pi5UartDeviceName, config.sensorStaleNs / 1e6);
         telemetry.update();
         waitForStart();
+
+        boolean lastPinState = rxPin.getState();
+        int pinEdgesThisSec = 0;
+        int pinEdgesPerSec = 0;
+        long edgeWindowStartNs = System.nanoTime();
 
         while (opModeIsActive() && !isStopRequested()) {
             long now = System.nanoTime();
@@ -56,7 +70,27 @@ public final class Pi5UartCommTestOpMode extends LinearOpMode {
             Pi5UartCameraTransport.Diagnostics diag = transport.diagnostics();
             boolean linkOk = left.valid && cameras.movementAuthorized(CameraChannel.WEBCAM1, now);
 
+            boolean pinState = rxPin.getState();
+            if (pinState != lastPinState) {
+                pinEdgesThisSec++;
+                lastPinState = pinState;
+            }
+            if (now - edgeWindowStartNs >= 1_000_000_000L) {
+                pinEdgesPerSec = pinEdgesThisSec;
+                pinEdgesThisSec = 0;
+                edgeWindowStartNs = now;
+            }
+
+            String uartThread = softUart == null
+                    ? "N/A"
+                    : (softUart.isThreadAlive() && softUart.isRunning() ? "ALIVE" : "DEAD");
+            String hint = classifyHint(diag, linkOk, pinEdgesPerSec);
+
             telemetry.addData("LINK", linkOk ? "OK" : "WAITING");
+            telemetry.addData("hint", hint);
+            telemetry.addData("pin", pinState ? "HIGH" : "LOW");
+            telemetry.addData("pinEdges/s", pinEdgesPerSec);
+            telemetry.addData("uartThread", uartThread);
             telemetry.addData("rx", "bytes=%d framesOk=%d decodeErr=%d", diag.bytesReceived, diag.framesOk, diag.decodeErrors);
             telemetry.addData("lastLine", diag.lastLine.isEmpty() ? "(none)" : diag.lastLine);
             telemetry.addData("webcam1", "valid=%s fresh=%s hb=%d type=%s payload=0x%05X dx=%.1f",
@@ -68,5 +102,27 @@ public final class Pi5UartCommTestOpMode extends LinearOpMode {
             telemetry.update();
             idle();
         }
+    }
+
+    private static String classifyHint(
+            Pi5UartCameraTransport.Diagnostics diag,
+            boolean linkOk,
+            int pinEdgesPerSec) {
+        if (linkOk) {
+            return "OK";
+        }
+        if (diag.bytesReceived == 0 && pinEdgesPerSec == 0) {
+            return "NO_SIGNAL (check wire/port/GND)";
+        }
+        if (diag.bytesReceived == 0 && pinEdgesPerSec > 0) {
+            return "SIGNAL_NO_BYTES (soft-UART/baud)";
+        }
+        if (diag.bytesReceived > 0 && diag.framesOk == 0 && diag.decodeErrors > 0) {
+            return "BYTES_NO_DECODE (baud/noise)";
+        }
+        if (diag.framesOk > 0) {
+            return "WAIT_HB (frames ok, heartbeat stale)";
+        }
+        return "DECODING";
     }
 }

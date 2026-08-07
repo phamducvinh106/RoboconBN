@@ -24,12 +24,25 @@ public final class FtcPi5SoftUartLineReader implements Pi5UartLineReader {
         rx.setMode(DigitalChannel.Mode.INPUT);
         this.thread = new Thread(this::sampleLoop, "pi5-soft-uart-rx");
         this.thread.setDaemon(true);
+        this.thread.setPriority(Thread.MAX_PRIORITY);
         this.thread.start();
     }
 
     @Override
     public byte[] pollBytes() {
         return buffer.drain();
+    }
+
+    public boolean pinState() {
+        return rx.getState();
+    }
+
+    public boolean isRunning() {
+        return running;
+    }
+
+    public boolean isThreadAlive() {
+        return thread.isAlive();
     }
 
     public void close() {
@@ -39,20 +52,18 @@ public final class FtcPi5SoftUartLineReader implements Pi5UartLineReader {
 
     private void sampleLoop() {
         while (running) {
-            try {
-                int value = readByte();
-                if (value >= 0) {
-                    buffer.offer((byte) value);
-                }
-            } catch (InterruptedException interrupted) {
-                Thread.currentThread().interrupt();
-                return;
+            int value = readByte();
+            if (value >= 0) {
+                buffer.offer((byte) value);
             }
         }
     }
 
-    private int readByte() throws InterruptedException {
+    private int readByte() {
         waitForLow();
+        if (!running) {
+            return -1;
+        }
         sleepHalfBit();
         int result = 0;
         for (int bit = 0; bit < 8; bit++) {
@@ -65,18 +76,25 @@ public final class FtcPi5SoftUartLineReader implements Pi5UartLineReader {
         return result;
     }
 
-    private void waitForLow() throws InterruptedException {
+    private void waitForLow() {
         while (running && rx.getState()) {
-            Thread.sleep(0, 200_000);
+            // Tight spin — Thread.sleep cannot reliably sample 104us start bits @ 9600 on Android.
         }
     }
 
-    private void sleepHalfBit() throws InterruptedException {
-        Thread.sleep(0, (int) (bitNs / 2));
+    private void sleepHalfBit() {
+        busyWait(bitNs / 2);
     }
 
-    private void sleepBit() throws InterruptedException {
-        Thread.sleep(0, (int) bitNs);
+    private void sleepBit() {
+        busyWait(bitNs);
+    }
+
+    private void busyWait(long nanos) {
+        long deadline = System.nanoTime() + nanos;
+        while (running && System.nanoTime() < deadline) {
+            // spin
+        }
     }
 
     private static final class ArrayRing {
