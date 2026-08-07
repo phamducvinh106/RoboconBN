@@ -38,7 +38,8 @@ public final class PiBlockReceiver implements AutoCloseable {
     }
 
     private final UsbManager usbManager;
-    private final AtomicReference<BlockDetection> latest = new AtomicReference<>();
+    private final AtomicReference<BlockDetection> latestLeft = new AtomicReference<>();
+    private final AtomicReference<BlockDetection> latestRight = new AtomicReference<>();
     private volatile boolean running;
     private Thread readerThread;
     private UsbDeviceConnection connection;
@@ -81,12 +82,12 @@ public final class PiBlockReceiver implements AutoCloseable {
     }
 
     public BlockDetection getLatest() {
-        return latest.get();
+        BlockDetection left = latestLeft.get();
+        return left != null ? left : latestRight.get();
     }
 
     public BlockDetection getLatest(String camera) {
-        BlockDetection detection = latest.get();
-        return detection != null && detection.camera.equals(camera) ? detection : null;
+        return "left".equals(camera) ? latestLeft.get() : "right".equals(camera) ? latestRight.get() : null;
     }
 
     private void readLoop() {
@@ -102,7 +103,9 @@ public final class PiBlockReceiver implements AutoCloseable {
                 lines.delete(0, newline + 1);
                 if (line.isEmpty()) continue;
                 try {
-                    latest.set(new BlockDetection(new JSONObject(line)));
+                    JSONObject packet = new JSONObject(line);
+                    latestLeft.set(new BlockDetection(packet.getJSONObject("left")));
+                    latestRight.set(new BlockDetection(packet.getJSONObject("right")));
                 } catch (Exception ignored) {
                     // Ignore incomplete or malformed frames; next frame remains usable.
                 }
