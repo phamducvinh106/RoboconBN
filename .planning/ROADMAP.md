@@ -133,3 +133,22 @@ Plans:
 - [ ] 06-02-PLAN.md
 
 - [ ] TBD (run /gsd-plan-phase 6 to break down)
+
+### Phase 7: Camera/OpenCV Continuation
+
+**Goal:** Continue camera work from `ColorContourCamera.java` with one lifecycle-safe shared API: `SINGLE_TARGET` centering on `webcam1` and `MULTI_TARGET` classification on `webcam2`.
+**Requirements**: VIS-01, VIS-02, VIS-03, VIS-04, VIS-05, VIS-06, VIS-07, TEST-01
+**Depends on:** Phase 6
+**Plans:** 0/2 plans executed
+
+**Success Criteria**:
+
+1. One shared `ColorContourCamera` lifecycle exposes explicit `SINGLE_TARGET` and `MULTI_TARGET` policies with measurable center, confidence, validity, threshold, overlap, and freshness behavior.
+2. `webcam1` is explicitly used for left-pallet centering and `webcam2` is explicitly used for multi-target classification; no silent camera fallback exists.
+3. Start, stop, open failure, released resources, and stale results are safe; stale/error/closed results cannot command movement.
+4. Offline dependency-free tests cover center math, candidate ranking, overlap suppression, confidence thresholds, mode selection, and stale-result rejection.
+
+Plans:
+
+- [ ] 07-01-PLAN.md — Normalize shared camera contract, lifecycle safety, explicit webcam mapping, and OpMode consumers.
+- [ ] 07-02-PLAN.md — Add offline camera continuation tests and finalize validation.
