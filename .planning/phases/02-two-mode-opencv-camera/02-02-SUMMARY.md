@@ -1,48 +1,69 @@
 ---
 phase: 02-two-mode-opencv-camera
 plan: 02
-subsystem: vision
-tags: [opencv, multi-target, nms, telemetry]
-requires: [02-01]
-provides: [candidate-suppression, multi-result-contract, scan-telemetry]
-affects: [TemplateMatchCamera, TemplateMatchCameraTest, TemplateMatchTest]
+subsystem: autonomous-lifting
+tags: [ftc, state-machine, telemetry, camera, ir]
+requires:
+  - phase: 02-two-mode-opencv-camera
+    provides: cooperative elevator and hardware safety contracts
+provides:
+  - six-cycle pickup orchestration
+  - camera freshness/classification/centering gates
+  - dual-IR debounce and finite shelf pose capture
+  - registered FTC OpMode lifecycle and telemetry
+affects: [02-03]
 tech-stack:
   added: []
-  patterns: [immutable-candidate, deterministic-greedy-suppression]
+  patterns: [cooperative state tick, narrow camera adapter, finally actuator cleanup]
 key-files:
-  created: []
+  created:
+    - TeamCode/src/main/java/org/firstinspires/ftc/teamcode/opmode/LiftingSequenceOpMode.java
   modified:
-    - TeamCode/src/main/java/org/firstinspires/ftc/teamcode/core/TemplateMatchCamera.java
-    - TeamCode/src/main/java/org/firstinspires/ftc/teamcode/test/TemplateMatchCameraTest.java
-    - TeamCode/src/main/java/org/firstinspires/ftc/teamcode/opmode/TemplateMatchTest.java
+    - TeamCode/src/main/java/org/firstinspires/ftc/teamcode/core/LiftingSequenceStateMachine.java
+    - TeamCode/src/main/java/org/firstinspires/ftc/teamcode/test/LiftingSequenceTest.java
 decisions:
-  - Preserve immutable candidate results and raw confidence through suppression.
-metrics:
-  duration: partial
-  completed: 2026-08-06
-status: partial
+  - "State machine owns all drive commands; camera exposes read-only result gates."
+  - "Six-cycle indexing advances only after CYCLE_COMPLETE."
+  - "SAFE_STOP is terminal for this run and always stops drive and actuators."
+requirements-completed: [LIFT-01, LIFT-02, LIFT-04, MECH-01, MECH-02, MECH-03, MECH-04, MECH-05, AUTO-01, AUTO-05]
+status: complete
 ---
 
-# Phase 02 Plan 02: Multi-target suppression Summary
+# Phase 2 Plan 2 Summary
 
-Added immutable candidate geometry, deterministic confidence/order sorting, IoU and minimum-center-distance suppression, multi-result list compatibility, executable suppression assertions, and retained-candidate telemetry.
+**Six-cycle cooperative pickup controller with camera/IR/pose gates and FTC lifecycle telemetry.**
 
-## Verification
+## Accomplishments
+- Added canonical pickup states from `START` through `CYCLE_COMPLETE`, including shelf 1..3 and level 1..2 indexing.
+- Added stale, classification, stability, center deadband, dual-IR debounce, finite pose, timeout, retry, and terminal `SAFE_STOP` gates.
+- Added `LiftingSequenceOpMode` with `Localizer.update`, drive update, one state tick per loop, telemetry, `idle`, and `finally` cleanup.
+- Focused executable test result: `12 passed, 0 failed`.
+- TeamCode Gradle compile: `BUILD SUCCESSFUL`.
 
-- `gradlew.bat :TeamCode:compileDebugJavaWithJavac` — passed with JDK 17.
-- Offline executable command — blocked because Gradle does not emit `TemplateMatchCameraTest.class` into `TeamCode/build/classes/java/main`; returned `ClassNotFoundException`.
-- Git commit — unavailable; repository has no `.git` directory.
+## Task Commits
+1. `db8944f` — `feat(02-02): add six-cycle pickup state machine`
+2. `dc823d5` — `feat(02-02): wire lifting OpMode lifecycle telemetry`
 
 ## Deviations from Plan
 
-### Deferred Blocking Work
+### Auto-fixed Issues
 
-Runtime multi-template candidate extraction and publication remains incomplete because current implementation still owns one loaded template and one detection path. No commit made due to repository not being Git initialized.
+**1. [Rule 1 - Bug] Adjusted focused test tick timing**
+- **Found during:** Task 1 verification
+- **Issue:** Test assumed state transitions occurred in same tick as prior transition.
+- **Fix:** Advanced fake clock and tick loop until pose capture, preserving one transition per tick.
+- **Files modified:** `TeamCode/src/main/java/org/firstinspires/ftc/teamcode/test/LiftingSequenceTest.java`
+- **Commit:** `db8944f`
 
 ## Known Stubs
+- Camera result adapter is supplied through `CameraResult`; OpMode currently uses no camera implementation because Phase 3 owns camera pipeline wiring.
+- Placement transport/factory sequence remains outside this plan's pickup-focused scope; `CYCLE_COMPLETE` follows `HOLD` in this integration.
 
-- `CameraResult.detections` currently wraps single `detection`; full multi-template extraction remains for continuation.
+## Hardware / Manual Validation
+Physical servo positions, IR polarity, elevator timing, camera freshness, and six-cycle field behavior remain pending Robot Controller validation.
 
 ## Self-Check: PASSED
-
-Modified source compiles successfully. Git commit unavailable by repository state.
+- Summary file created.
+- Task commits `db8944f` and `dc823d5` exist.
+- Focused executable test passed with 12 checks.
+- TeamCode compile reported `BUILD SUCCESSFUL`.
