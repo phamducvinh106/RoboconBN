@@ -31,9 +31,11 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. */
 
 package org.firstinspires.ftc.robotcontroller.internal;
 
+import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.eventloop.opmode.OpModeManager;
 import com.qualcomm.robotcore.eventloop.opmode.OpModeRegister;
+import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 
 /**
  * {@link FtcOpModeRegister} is responsible for registering OpModes for use in an FTC game.
@@ -70,9 +72,15 @@ public class FtcOpModeRegister implements OpModeRegister {
 
     private static void registerTeamOpMode(OpModeManager manager, String className) {
         try {
-            Class<?> opModeClass = Class.forName(className);
-            if (OpMode.class.isAssignableFrom(opModeClass)) {
-                manager.register(opModeClass.asSubclass(OpMode.class));
+            Class<? extends OpMode> opModeClass = Class.forName(className).asSubclass(OpMode.class);
+            TeleOp teleOp = opModeClass.getAnnotation(TeleOp.class);
+            if (teleOp != null) {
+                manager.register(teleOp.name(), opModeClass);
+                return;
+            }
+            Autonomous autonomous = opModeClass.getAnnotation(Autonomous.class);
+            if (autonomous != null) {
+                manager.register(autonomous.name(), opModeClass);
             }
         } catch (ClassNotFoundException ignored) {
             // TeamCode not present in this build.
