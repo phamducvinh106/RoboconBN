@@ -1,57 +1,55 @@
 ---
 phase: 02-two-mode-opencv-camera
 plan: 01
-subsystem: vision
-tags: [opencv, camera, telemetry]
-requires: []
-provides: [camera-mode-contract, measurable-camera-config, stale-result-telemetry]
-affects: [TemplateMatchCamera, camera-test-opmodes]
-tech-stack:
-  added: []
-  patterns: [shared-lifecycle, immutable-result]
-key-files:
-  created: []
-  modified:
-    - TeamCode/src/main/java/org/firstinspires/ftc/teamcode/core/TemplateMatchCamera.java
-    - TeamCode/src/main/java/org/firstinspires/ftc/teamcode/opmode/TemplateMatchSingleTest.java
-    - TeamCode/src/main/java/org/firstinspires/ftc/teamcode/opmode/TemplateMatchTest.java
-decisions:
-  - Preserve one TemplateMatchCamera lifecycle and expose mode/config through its API.
-metrics:
-  duration: 15m
-  completed: 2026-08-06
+subsystem: hardware
 status: complete
+tags: [hardware, managers, uart, camera, telemetry]
+dependency_graph:
+  requires: [RobotHardware, Localizer]
+  provides: [narrow hardware manager seams, Pi5 I2C camera placeholder]
+  affects: [02-02, 02-03, 02-04, 02-05]
+tech_stack:
+  added: []
+  patterns: [dependency injection, cooperative stepper, explicit camera channels]
+key_files:
+  created: [HardwareContracts.java, StepperElevatorManager.java, ForkServoManager.java, IrSensorManager.java, EndstopManager.java, EncoderLocalizerManager.java, CameraAdapterManager.java, Pi5I2cCameraDeviceManager.java, CameraFrameContract.java, CameraChannel.java, ReleaseBackoutSensorManager.java, LiftingHardwareManagerTest.java]
+  modified: []
+key_decisions:
+  - Preserve no-timeout and deferred error-handling decisions; managers expose readings/actions only.
+  - Keep Pi5 I2C parsing and OpenCV deferred; invalid placeholder frames cannot authorize movement.
+metrics:
+  duration: 12 min
+  completed_date: 2026-08-07
 ---
 
-# Phase 02 Plan 01: Shared camera contracts Summary
+# Phase 2 Plan 1: Hardware Manager Foundations Summary
 
-Shared `SINGLE_TARGET`/`MULTI_TARGET` mode selection, measurable configuration, immutable result fields, and mode-aware telemetry added without new dependencies or camera wrappers.
+Separate manager classes now isolate elevator, fork, IR, endstop, encoder/pose, camera, and release/back-out responsibilities. Injected channels and clocks support offline checks; camera exposes explicit `webcam1` and `webcam2` identities with validity/freshness gates.
 
-## Tasks Completed
+## Verification
 
-- Added `CameraMode`, immutable `CameraConfig`, mode-aware constructor, and policy accessors.
-- Added `centerX`, `centerY`, raw `confidence`, and `staleAgeMs` to `CameraResult`.
-- Updated both OpModes to select explicit mode and consume result freshness directly.
-- Added policy and lifecycle telemetry.
+- `javac ... LiftingHardwareManagerTest.java` — passed.
+- `java -cp build/phase2-test org.firstinspires.ftc.teamcode.test.LiftingHardwareManagerTest` — `RESULT: 11 passed, 0 failed`.
+- `gradlew.bat :TeamCode:compileDebugJavaWithJavac` — passed.
 
 ## Deviations from Plan
 
 ### Auto-fixed Issues
 
-**1. [Rule 3 - Blocking issue] Fixed default configuration constructor argument count**
-- **Found during:** Task 1 verification
-- **Fix:** Corrected default `CameraConfig` delegation.
-
-## Verification
-
-- `./gradlew.bat :TeamCode:compileDebugJavaWithJavac` — passed with JDK 17.
-- Offline executable test could not run because Gradle does not emit `TemplateMatchCameraTest.class` into `TeamCode/build/classes/java/main`; command returned `ClassNotFoundException`.
-- Repository commit unavailable: no `.git` repository detected.
+**1. [Rule 1 - Test bug] Corrected pulse-order assertion.**
+- **Found during:** Task 2
+- **Issue:** Test assumed exact log prefix despite initial homing writes.
+- **Fix:** Assert required low-before-direction subsequence instead.
+- **Files modified:** `LiftingHardwareManagerTest.java`
 
 ## Known Stubs
 
-None introduced.
+- `Pi5I2cCameraDeviceManager.java` intentionally returns invalid placeholder frames. I2C format/parser and vision remain deferred by D-03/D-05; later camera plans own integration.
+
+## Lint
+
+IDE reported classpath warnings only; standalone javac and Gradle compile passed.
 
 ## Self-Check: PASSED
 
-Source files exist and compile successfully. No commit hash available because repository is not initialized as Git.
+All 12 planned source/test files exist; task commit recorded in git history.

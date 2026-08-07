@@ -1,0 +1,3 @@
+package org.firstinspires.ftc.teamcode.core;
+
+public final class CameraAdapterManager { private final HardwareContracts.CameraTransport transport; private final long maxAgeNs; public CameraAdapterManager(HardwareContracts.CameraTransport transport,long maxAgeNs){if(transport==null||maxAgeNs<0)throw new IllegalArgumentException();this.transport=transport;this.maxAgeNs=maxAgeNs;} public CameraFrameContract reading(CameraChannel channel){return transport.read(channel);} public boolean movementAuthorized(CameraChannel channel,long nowNs){return reading(channel).authorizesMovement(nowNs,maxAgeNs);} }

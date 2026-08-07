@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-stopped_at: Completed Phase 6 hardware verification
-last_updated: "2026-08-07T02:25:00.000Z"
+stopped_at: Completed 02-02-PLAN.md
+last_updated: "2026-08-07T08:11:13.514Z"
 progress:
-  total_phases: 3
+  total_phases: 4
   completed_phases: 2
-  total_plans: 6
-  completed_plans: 6
+  total_plans: 11
+  completed_plans: 7
 ---
 
 # Project State
@@ -36,6 +36,8 @@ See: `.planning/PROJECT.md` (updated 2026-08-06)
 - Multi-target candidate extraction requires raw thresholding and overlap suppression.
 - IR sensors confirm cargo-ready position only.
 - Elevator homes at `endstop1`; fork states are PLACE and HOLD.
+- [Phase ?]: Hardware communication evidence precedes JSON, state-machine, and placement work
+- [Phase ?]: Pi5 I2C device API/README verification remains required; frame parser/OpenCV remain deferred; invalid or stale placeholder frames cannot authorize movement
 
 ## Next Action
 
@@ -59,9 +61,10 @@ Run `/gsd-plan-phase 6` to create executable plans for bounded automatic PID tun
 | Plan | Duration | Tasks | Files |
 |------|----------|-------|-------|
 | Phase 06-automatic-pid-tuning-opmode-for-mecanumdrive-within-a-bounde P01 | 8 min | 3 tasks | 2 files |
+| Phase 02-two-mode-opencv-camera P02 | 15 min | 2 tasks | 3 files |
 
 ## Session
 
-**Last session:** 2026-08-07T01:40:42.870Z
-**Stopped at:** Completed 06-01-PLAN.md; awaiting 06-02 hardware verification
+**Last session:** 2026-08-07T08:11:13.499Z
+**Stopped at:** Completed 02-02-PLAN.md
 **Resume file:** None
