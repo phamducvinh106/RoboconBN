@@ -7,9 +7,9 @@ Start with a verified hardware contract, then improve the existing `TemplateMatc
 ## Phases
 
 - [ ] **Phase 1: Localizer Validation** - Validate encoder signs, encoder constants, IMU orientation/turn direction, and localization math only.
-- [ ] **Phase 2: Two-Mode OpenCV Camera** - Add `SINGLE_TARGET` center precision and `MULTI_TARGET` type classification.
-- [ ] **Phase 3: Pickup Mechanism** - Add elevator homing, step control, fork states, and IR readiness.
-- [ ] **Phase 4: O2 Autonomous Flow** - Connect vision, odometry, pickup, routing, placement, and recovery.
+- [ ] **Phase 2: Lifting Sequence State Machine** - Execute homing, height selection, camera alignment, IR approach, dual pickup, transport, placement, and return-home safely.
+- [ ] **Phase 3: Camera/OpenCV Continuation** - Add shared `SINGLE_TARGET` centering and `MULTI_TARGET` classification for `webcam1`/`webcam2`.
+- [ ] **Phase 4: O2 Autonomous Flow** - Connect lifting state machine, odometry, camera, pickup, routing, placement, and recovery.
 - [ ] **Phase 5: Verification and Tuning** - Test camera metrics, hardware, failure paths, and match timing.
 
 ## Phase Details
@@ -34,44 +34,43 @@ Plans:
 - [ ] 01-01: Measure encoder signs/constants and IMU yaw orientation with calibration telemetry.
 - [ ] 01-02: Verify and correct Localizer pose transform, heading wrap, reset, and offset calculations.
 
-### Phase 2: Two-Mode OpenCV Camera
+### Phase 2: Lifting Sequence State Machine
 
-**Goal**: Existing `TemplateMatchCamera` supports two explicit scoring policies without duplicated lifecycle code.
+**Goal**: Execute one complete safe lifting cycle using `step`, `dir`, servos, IR sensors, odometry, and validity/freshness-aware camera outputs received through a placeholder Raspberry Pi 5 UART transport contract.
 **Depends on**: Phase 1
-**Requirements**: VIS-01, VIS-02, VIS-03, VIS-04, VIS-05, VIS-06, VIS-07
+**Requirements**: MECH-01, MECH-02, MECH-03, MECH-04, MECH-05, AUTO-01, AUTO-05
 **Success Criteria**:
 
-  1. `MULTI_TARGET` classifies right and left blocks before centering.
-  2. `SINGLE_TARGET` tracks the left pallet center with low-latency stable error during lateral motion.
-  3. Robot strafes until camera center matches left pallet center; mechanical coupling places right fork at right pallet center.
-  4. Overlapping multi-target matches collapse to distinct detections and confidence remains raw, not renormalized to 1.
-  5. Camera start/stop/error handling works identically in both modes.
+  1. States cover `START`, `HOMING`, `PLACE`, `MOVE_TO_FAC`, `READY1`, `READY2`, `SCAN_LEFT`, `SCAN_RIGHT`, `CENTER_LEFT`, `APPROACH_IR`, `LIFT1`, `LIFT2`, `BACK_OUT`, `HOLD`, `MOVE_TO_FACTORY`, `PLACE_AT_FACTORY`, `READY1_PUSH`, and `HOME`.
+  2. Stepper uses bounded `step` pulses and `dir`; homing stops immediately at `endstop1`.
+  3. Ready height matches current pickup floor; lift height raises cargo clear; `HOME` lowers cargo to floor-safe travel height.
+  4. Both IR sensors must be active before lift; missing/stale camera data or failed IR confirmation safe-stops.
+  5. Fixed factory coordinates route by left-block classification; placement sequence handles left block, then right block, using `READY1` to push existing cargo deeper.
+  6. Every state has timeout, stop-request, and safe motor/servo shutdown behavior.
 
+**Plans**: 3/5 plans executed
+
+Execution order: UART/camera manager communication test → centralized JSON → state-machine integration → placement/wiring/acceptance. Phase 2 preserves two explicit camera identities/channels but defers UART frame parsing and all OpenCV/template matching to Phase 3.
+
+Plans:
+
+- [x] 02-01-PLAN.md — Define one manager per physical subsystem, narrow contracts, seams, and manager tests.
+- [x] 02-02-PLAN.md — Run isolated low-power hardware communication OpMode and record wiring/calibration evidence.
+- [x] 02-03-PLAN.md — Load centralized strict JSON configuration before any hardware or runtime motion.
+- [ ] 02-04-PLAN.md — Integrate manager contracts into pickup state machine, D-02 gates, and production OpMode.
+- [ ] 02-05-PLAN.md — Complete serial placement, release/back-out wiring, acceptance, and traceability.
+
+### Phase 3: Camera/OpenCV Continuation
+
+**Goal**: One lifecycle-safe shared camera API exposes `SINGLE_TARGET` centering on `webcam1` and `MULTI_TARGET` classification on `webcam2`.
+**Depends on**: Phase 1
+**Requirements**: VIS-01, VIS-02, VIS-03, VIS-04, VIS-05, VIS-06, VIS-07, TEST-01
 **Plans**: 2 plans
 
 Plans:
 
-- [ ] 02-01: Add explicit camera mode and shared result/config contract.
-- [ ] 02-02: Implement multi-candidate classification, left-target tracking, and tests.
-
-### Phase 3: Pickup Mechanism
-
-**Goal**: Elevator and fork acquire pallet safely and expose readiness.
-**Depends on**: Phase 1
-**Requirements**: MECH-01, MECH-02, MECH-03, MECH-04, MECH-05
-**Success Criteria**:
-
-  1. Elevator homes once against `endstop1`, then respects calibrated bounds.
-  2. Fork reaches PLACE/HOLD positions with both servos coordinated.
-  3. Robot drives forward after lateral centering until debounced `leftIR` and `rightIR` confirm both packages are ready.
-  4. One fork cycle engages and lifts both pallets clear before drive translation.
-
-**Plans**: 2 plans
-
-Plans:
-
-- [ ] 03-01: Implement elevator homing, bounded step pulses, and endstop timeout safety.
-- [ ] 03-02: Implement PLACE/HOLD fork states, IR debounce, and dual-pallet pickup sequence.
+- [ ] 03-01: Normalize shared camera contract, lifecycle safety, explicit webcam mapping, and OpMode consumers.
+- [ ] 03-02: Add offline camera continuation tests and finalize validation.
 
 ### Phase 4: O2 Autonomous Flow
 
@@ -115,8 +114,8 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Hardware Contract | 0/2 | Not started | - |
-| 2. Two-Mode OpenCV Camera | 0/2 | Not started | - |
-| 3. Pickup Mechanism | 0/2 | Not started | - |
+| 2. Lifting Sequence State Machine | 3/5 | In Progress|  |
+| 3. Camera/OpenCV Continuation | 0/2 | Not started | - |
 | 4. O2 Autonomous Flow | 0/2 | Not started | - |
 | 5. Verification and Tuning | 0/2 | Not started | - |
 
@@ -134,7 +133,7 @@ Plans:
 
 - [ ] TBD (run /gsd-plan-phase 6 to break down)
 
-### Phase 7: Camera/OpenCV Continuation
+### Phase 7: Camera/OpenCV Continuation (superseded by Phase 3 camera scope)
 
 **Goal:** Continue camera work from `ColorContourCamera.java` with one lifecycle-safe shared API: `SINGLE_TARGET` centering on `webcam1` and `MULTI_TARGET` classification on `webcam2`.
 **Requirements**: VIS-01, VIS-02, VIS-03, VIS-04, VIS-05, VIS-06, VIS-07, TEST-01
