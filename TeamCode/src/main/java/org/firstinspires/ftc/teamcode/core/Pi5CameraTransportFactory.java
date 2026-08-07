@@ -12,14 +12,14 @@ public final class Pi5CameraTransportFactory {
         if (hardwareMap == null || config == null || clock == null) {
             throw new IllegalArgumentException("missing pi5 camera dependencies");
         }
-        Pi5UartLineReader reader = FtcPi5UartLineReaderFactory.fromHardwareMap(hardwareMap, config);
-        return new Pi5UartCameraTransport(
-                clock,
-                reader,
-                config.sensorStaleNs,
-                config.cameraFrameWidth,
-                config.blockTypesByCode
+        PiCdcCameraTransport transport = new PiCdcCameraTransport(
+                hardwareMap.appContext,
+                config.sensorStaleNs / 1_000_000L
         );
+        if (!transport.start()) {
+            throw new IllegalStateException("Pi USB CDC ACM device unavailable");
+        }
+        return transport;
     }
 
     public static Pi5UartCameraTransport createWithHubPolling(

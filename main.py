@@ -7,19 +7,18 @@ from pathlib import Path
 
 import cv2
 
-from block_detected_for_pi.config import BlockCodeConfig, DEFAULT_UART_BAUD
+from block_detected_for_pi.config import BlockCodeConfig
+from block_detected_for_pi.cdc_publisher import CdcPublisher
 from block_detected_for_pi.core import TargetingCore
 from block_detected_for_pi.frame_state import RegisterFile
 from block_detected_for_pi.payload import build_registers, frame_from_targets, unpack_payload
-from block_detected_for_pi.uart_publisher import create_uart_publisher
-
 
 DEFAULT_MODEL = "block_detected_for_pi/models/pose11-fp16.onnx"
-DEFAULT_UART_PORT = "/dev/serial0"
+DEFAULT_CDC_DEVICE = "/dev/ttyGS0"
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Pi 5 dual-camera block detection with UART output")
+    parser = argparse.ArgumentParser(description="Pi 5 dual-camera block detection with USB CDC output")
     parser.add_argument("--model", default=DEFAULT_MODEL)
     parser.add_argument("--camera-left", type=int, default=0,
                         help="V4L2 index for left cam (often /dev/video0)")
@@ -28,10 +27,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--size", type=int, default=320)
     parser.add_argument("--conf", type=float, default=0.25)
     parser.add_argument("--frames", type=int, default=0)
-    parser.add_argument("--no-uart", action="store_true", help="skip UART publish (stdout JSON only)")
-    parser.add_argument("--uart-port", default=DEFAULT_UART_PORT)
-    parser.add_argument("--uart-baud", type=int, default=DEFAULT_UART_BAUD)
-    parser.add_argument("--mock-uart", action="store_true", help="skip real UART port open")
+    parser.add_argument("--no-cdc", action="store_true", help="skip USB CDC publish")
+    parser.add_argument("--cdc-device", default=DEFAULT_CDC_DEVICE)
     return parser
 
 
@@ -71,9 +68,9 @@ def run(argv: list[str] | None = None) -> int:
     model_path = resolve_model(args.model)
     code_config = BlockCodeConfig()
     register_file = RegisterFile()
-    uart = None
-    if not args.no_uart:
-        uart = create_uart_publisher(args.uart_port, args.uart_baud, mock=args.mock_uart)
+    cdc = None
+    if not args.no_cdc:
+        cdc = CdcPublisher(args.cdc_device)
 
     left_cam = cv2.VideoCapture(args.camera_left)
     right_cam = cv2.VideoCapture(args.camera_right)
@@ -122,8 +119,8 @@ def run(argv: list[str] | None = None) -> int:
                     heartbeat=register_file.heartbeat,
                 )
                 heartbeat = register_file.publish(frame)
-                if uart is not None:
-                    uart.publish(frame)
+                if cdc is not None:
+                    cdc.publish(left=left, right=right, frame_valid=frame_valid)
                 decoded = unpack_payload(payload)
                 record = {
                     "frame_valid": frame_valid,
@@ -137,15 +134,15 @@ def run(argv: list[str] | None = None) -> int:
                         "right_code": decoded.right_code,
                     },
                     "heartbeat": heartbeat,
-                    "uart": not args.no_uart,
+                    "cdc": not args.no_cdc,
                 }
                 print(json.dumps(record, separators=(",", ":")), flush=True)
                 count += 1
     finally:
         left_cam.release()
         right_cam.release()
-        if uart is not None:
-            uart.close()
+        if cdc is not None:
+            cdc.close()
     return 0
 
 

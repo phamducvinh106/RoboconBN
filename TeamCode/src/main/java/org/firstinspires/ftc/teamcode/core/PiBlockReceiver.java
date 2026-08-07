@@ -22,6 +22,8 @@ public final class PiBlockReceiver implements AutoCloseable {
         public final double x;
         public final double y;
         public final long timestampMs;
+        public final boolean found;
+        public final String className;
 
         private BlockDetection(JSONObject json) {
             camera = json.optString("camera", "unknown");
@@ -30,6 +32,8 @@ public final class PiBlockReceiver implements AutoCloseable {
             x = json.optDouble("x", 0.0);
             y = json.optDouble("y", 0.0);
             timestampMs = json.optLong("ts_ms", 0L);
+            found = json.optBoolean("found", blockType >= 0);
+            className = json.optString("class_name", "");
         }
     }
 
@@ -78,6 +82,11 @@ public final class PiBlockReceiver implements AutoCloseable {
 
     public BlockDetection getLatest() {
         return latest.get();
+    }
+
+    public BlockDetection getLatest(String camera) {
+        BlockDetection detection = latest.get();
+        return detection != null && detection.camera.equals(camera) ? detection : null;
     }
 
     private void readLoop() {
