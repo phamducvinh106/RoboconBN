@@ -17,6 +17,9 @@ import org.firstinspires.ftc.teamcode.core.ForkServoManager;
 import org.firstinspires.ftc.teamcode.core.HardwareContracts;
 import org.firstinspires.ftc.teamcode.core.IrSensorManager;
 import org.firstinspires.ftc.teamcode.core.LiftingSequenceConfig;
+import org.firstinspires.ftc.teamcode.core.LiftingSequenceConfigLoader;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import org.firstinspires.ftc.teamcode.core.Pi5UartCameraTransport;
 import org.firstinspires.ftc.teamcode.core.ReleaseBackoutSensorManager;
 import org.firstinspires.ftc.teamcode.core.RobotHardware;
@@ -24,22 +27,26 @@ import org.firstinspires.ftc.teamcode.core.StepperElevatorManager;
 
 @TeleOp(name = "Lifting Hardware Communication Test", group = "Test")
 public final class LiftingHardwareTestOpMode extends LinearOpMode {
-    private static final long CAMERA_MAX_AGE_NS = 250_000_000L;
-
     @Override
     public void runOpMode() throws InterruptedException {
+        LiftingSequenceConfig config;
+        try (InputStream input = hardwareMap.appContext.getAssets().open("phase2-lifting-config.json")) {
+            java.io.ByteArrayOutputStream output = new java.io.ByteArrayOutputStream(); byte[] buffer = new byte[1024]; int count; while ((count = input.read(buffer)) != -1) output.write(buffer, 0, count); config = LiftingSequenceConfigLoader.load(new String(output.toByteArray(), StandardCharsets.UTF_8));
+        } catch (Exception error) {
+            telemetry.addData("SAFE_STOP", "invalid config: %s", error.getMessage());
+            telemetry.update();
+            return;
+        }
         RobotHardware robot = new RobotHardware(hardwareMap);
         DigitalChannel step = robot.step;
         DigitalChannel dir = robot.dir;
         EndstopManager endstop = new EndstopManager(() -> !robot.endstop1.getState());
         StepperElevatorManager elevator = new StepperElevatorManager(
                 channel(step), channel(dir), endstop,
-                LiftingSequenceConfig.STEP_HIGH_NS, LiftingSequenceConfig.STEP_LOW_NS,
-                LiftingSequenceConfig.ElevatorTarget.LIFT2.steps);
+                config.stepHighNs, config.stepLowNs, config.lift2Steps);
         ForkServoManager fork = new ForkServoManager(
                 servo(robot.servoLeft), servo(robot.servoRight),
-                LiftingSequenceConfig.PLACE_LEFT, LiftingSequenceConfig.PLACE_RIGHT,
-                LiftingSequenceConfig.HOLD_LEFT, LiftingSequenceConfig.HOLD_RIGHT);
+                config.placeLeft, config.placeRight, config.holdLeft, config.holdRight);
         IrSensorManager ir = new IrSensorManager(
                 () -> !robot.leftIR.getState(), () -> !robot.rightIR.getState());
         EncoderLocalizerManager pose = new EncoderLocalizerManager(() -> {
@@ -50,7 +57,7 @@ public final class LiftingHardwareTestOpMode extends LinearOpMode {
         ReleaseBackoutSensorManager release = new ReleaseBackoutSensorManager(
                 () -> !robot.endstop1.getState(), poseSource(pose));
         CameraAdapterManager cameras = new CameraAdapterManager(
-                new Pi5UartCameraTransport(System::nanoTime), CAMERA_MAX_AGE_NS);
+                new Pi5UartCameraTransport(System::nanoTime), config.sensorStaleNs);
         hardwareMap.get(WebcamName.class, "webcam2");
 
         telemetry.addLine("LOW POWER HARDWARE COMMUNICATION TEST");
@@ -82,7 +89,7 @@ public final class LiftingHardwareTestOpMode extends LinearOpMode {
                 telemetry.addData("release/backout", "released=%s x=%.2f y=%.2f", release.released(), release.reading().xCm, release.reading().yCm);
                 telemetry.addData("webcam1", "valid=%s fresh=%s ageNs=%d", left.valid, cameras.movementAuthorized(CameraChannel.WEBCAM1, now), now - left.timestampNs);
                 telemetry.addData("webcam2", "valid=%s fresh=%s ageNs=%d", right.valid, cameras.movementAuthorized(CameraChannel.WEBCAM2, now), now - right.timestampNs);
-                telemetry.addData("config", "version=external JSON pending; timing=%d/%d ns", LiftingSequenceConfig.STEP_HIGH_NS, LiftingSequenceConfig.STEP_LOW_NS);
+                telemetry.addData("config", "version=%d fingerprint=%s timing=%d/%d ns", config.version, config.fingerprint, config.stepHighNs, config.stepLowNs);
                 telemetry.update();
                 idle();
             }
