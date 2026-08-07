@@ -14,6 +14,7 @@ public final class RobotHardware {
         HOME(0), READY1(844), LIFT1(1781), READY2(4688), LIFT2(5625);
         final int steps;
         ElevatorState(int steps) { this.steps = steps; }
+        public int steps() { return steps; }
     }
 
     private long pulseLowUntilNs;
@@ -37,6 +38,7 @@ public final class RobotHardware {
     public final DigitalChannel dir;
     public final DigitalChannel endstop1;
     public final WebcamName webcam1;
+    public final WebcamName webcam2;
     public final IMU imu;
     public final Localizer localizer;
 
@@ -53,6 +55,7 @@ public final class RobotHardware {
         dir = output(hardwareMap, "dir");
         endstop1 = input(hardwareMap, "endstop1");
         webcam1 = hardwareMap.get(WebcamName.class, "webcam1");
+        webcam2 = hardwareMap.get(WebcamName.class, "webcam2");
         imu = hardwareMap.get(IMU.class, "imu");
 
         stopActuators();

@@ -7,93 +7,103 @@ import org.openftc.easyopencv.OpenCvCameraFactory;
 import org.openftc.easyopencv.OpenCvCameraRotation;
 import org.openftc.easyopencv.OpenCvPipeline;
 import org.openftc.easyopencv.OpenCvWebcam;
-import org.opencv.core.Core;
 import org.opencv.core.Mat;
-import org.opencv.core.MatOfPoint;
-import org.opencv.core.MatOfPoint2f;
+import org.opencv.core.MatOfDMatch;
+import org.opencv.core.MatOfKeyPoint;
+import org.opencv.core.Point;
 import org.opencv.core.Rect;
-import org.opencv.core.Scalar;
+import org.opencv.core.Size;
+import org.opencv.features2d.DescriptorMatcher;
+import org.opencv.features2d.ORB;
 import org.opencv.imgproc.Imgproc;
-import org.opencv.core.MatOfDouble;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
-/** One detector for both webcams: webcam1 centers, webcam2 only classifies. */
+/** Single lifecycle owner for explicit webcam1/webcam2 ORB/template policies. */
 public final class ColorContourCamera {
-    public enum Mode { LEFT_CENTERING, RIGHT_CLASSIFICATION }
-    public static final int STREAM_WIDTH = 640, STREAM_HEIGHT = 480;
+    public enum Mode { SINGLE_TARGET, MULTI_TARGET }
+    public enum CameraId { WEBCAM1, WEBCAM2 }
+    public enum State { CREATED, OPENING, STREAMING, STOPPING, CLOSED, ERROR }
+    public static final int STREAM_WIDTH = 640, STREAM_HEIGHT = 480, MAX_CANDIDATES = 2;
+    public static final int MIN_DESCRIPTOR_MATCHES = 8;
+    public static final double MIN_MATCH_CONFIDENCE = .35, NMS_OVERLAP = .45, MIN_CENTER_DISTANCE_PX = 24;
+    public static final long MAX_RESULT_AGE_MS = 300;
 
     public static final class ClassConfig {
         public final String label;
-        public final double hueMin, hueMax, saturationMin, valueMin;
-        public final double aspectMin, aspectMax, circularityMin;
-        public ClassConfig(String label, double hueMin, double hueMax, double saturationMin,
-                           double valueMin, double aspectMin, double aspectMax, double circularityMin) {
-            this.label = label; this.hueMin = hueMin; this.hueMax = hueMax;
-            this.saturationMin = saturationMin; this.valueMin = valueMin;
-            this.aspectMin = aspectMin; this.aspectMax = aspectMax; this.circularityMin = circularityMin;
+        public final Mat template;
+        public final double minConfidence;
+        public ClassConfig(String label, Mat template, double minConfidence) {
+            if (label == null || label.isEmpty() || template == null || template.empty()) throw new IllegalArgumentException("template required");
+            this.label = label; this.template = template; this.minConfidence = minConfidence;
         }
     }
 
-    public static final int CLASS_SWITCH_FRAMES = 10;
-    public static final int PATTERN_GRID_SIZE = 4;
-    public static final ClassConfig[] DEFAULT_CLASSES = {
-            new ClassConfig("BLOCK_1", 0, 45, 45, 35, .35, 2.85, .15),
-            new ClassConfig("BLOCK_2", 45, 90, 45, 35, .35, 2.85, .15),
-            new ClassConfig("BLOCK_3", 90, 135, 45, 35, .35, 2.85, .15),
-            new ClassConfig("BLOCK_4", 135, 179, 45, 35, .35, 2.85, .15)
-    };
+    public static final class Candidate {
+        public final String label; public final double centerX, centerY, confidence;
+        Candidate(String label, double x, double y, double confidence) { this.label=label; centerX=x; centerY=y; this.confidence=confidence; }
+    }
 
     public static final class Result {
         public final long timestampMs; public final boolean valid; public final String label;
-        public final double centerX, centerY, dxPx, dyPx, confidence;
-        public final int contourCount, stableFrames; public final boolean fastCentering;
-        private Result(long t, boolean v, String l, double x, double y, double dx, double dy, double c, int n, int s, boolean f) {
-            timestampMs=t; valid=v; label=l; centerX=x; centerY=y; dxPx=dx; dyPx=dy; confidence=c; contourCount=n; stableFrames=s; fastCentering=f;
+        public final double centerX, centerY, dxPx, dyPx, confidence; public final int stableFrames, contourCount;
+        public final boolean fastCentering, authorizesMovement; public final State state; public final int errorCode;
+        public final List<Candidate> candidates;
+        private Result(long time, boolean valid, String label, double x, double y, double dx, double dy,
+                       double confidence, int stableFrames, boolean fast, boolean authorized, State state,
+                       int errorCode, List<Candidate> candidates) {
+            timestampMs=time; this.valid=valid; this.label=label; centerX=x; centerY=y; dxPx=dx; dyPx=dy;
+            this.confidence=confidence; this.stableFrames=stableFrames; contourCount=candidates.size(); fastCentering=fast;
+            authorizesMovement=authorized; this.state=state; this.errorCode=errorCode;
+            this.candidates=Collections.unmodifiableList(new ArrayList<>(candidates));
         }
-        static Result empty(long t, int n) { return new Result(t,false,"",Double.NaN,Double.NaN,Double.NaN,Double.NaN,0,n,0,false); }
+        static Result empty(long t, State state, int error) { return new Result(t,false,"",Double.NaN,Double.NaN,Double.NaN,Double.NaN,0,0,false,false,state,error,Collections.<Candidate>emptyList()); }
     }
 
-    private final OpenCvWebcam webcam; private final Pipeline pipeline; private volatile String state="CREATED"; private volatile int errorCode;
-    public ColorContourCamera(HardwareMap map, String name, boolean preview, Mode mode) { this(map,name,preview,mode,DEFAULT_CLASSES); }
+    private final OpenCvWebcam webcam; private final Pipeline pipeline; private final CameraId cameraId;
+    private volatile State state = State.CREATED; private volatile int errorCode; private long generation;
+
+    public ColorContourCamera(HardwareMap map, String name, boolean preview, Mode mode) {
+        this(map, name, preview, mode, new ClassConfig[0]);
+    }
     public ColorContourCamera(HardwareMap map, String name, boolean preview, Mode mode, ClassConfig[] classes) {
-        WebcamName camera=map.get(WebcamName.class,name); int view=map.appContext.getResources().getIdentifier("cameraMonitorViewId","id",map.appContext.getPackageName());
-        webcam=preview?OpenCvCameraFactory.getInstance().createWebcam(camera,view):OpenCvCameraFactory.getInstance().createWebcam(camera); pipeline=new Pipeline(mode,classes); webcam.setPipeline(pipeline); webcam.setMillisecondsPermissionTimeout(3000);
+        cameraId = "webcam1".equals(name) ? CameraId.WEBCAM1 : "webcam2".equals(name) ? CameraId.WEBCAM2 : failCameraName(name);
+        if (mode == Mode.SINGLE_TARGET && cameraId != CameraId.WEBCAM1) throw new IllegalArgumentException("SINGLE_TARGET requires webcam1");
+        WebcamName camera = map.get(WebcamName.class, name);
+        int view = map.appContext.getResources().getIdentifier("cameraMonitorViewId", "id", map.appContext.getPackageName());
+        webcam = preview ? OpenCvCameraFactory.getInstance().createWebcam(camera, view) : OpenCvCameraFactory.getInstance().createWebcam(camera);
+        pipeline = new Pipeline(cameraId, mode, classes); webcam.setPipeline(pipeline); webcam.setMillisecondsPermissionTimeout(3000);
     }
-    public void startAsync() { if ("STREAMING".equals(state)||"OPENING".equals(state)) return; state="OPENING"; webcam.openCameraDeviceAsync(new OpenCvCamera.AsyncCameraOpenListener(){ public void onOpened(){ try { webcam.startStreaming(STREAM_WIDTH,STREAM_HEIGHT,OpenCvCameraRotation.UPRIGHT); state="STREAMING"; } catch(RuntimeException e){ state="ERROR"; errorCode=-1; }} public void onError(int code){errorCode=code;state="ERROR";} }); }
-    public void stop() { state="STOPPING"; try{webcam.stopStreaming();}catch(RuntimeException ignored){} try{webcam.closeCameraDevice();}catch(RuntimeException ignored){} pipeline.release(); state="CLOSED"; }
-    public Result getLatestResult(){return pipeline.latest.get();} public String getCameraState(){return state;} public int getCameraErrorCode(){return errorCode;} public double getProcessingMs(){return pipeline.processingMs;}
+    private static CameraId failCameraName(String name) { throw new IllegalArgumentException("camera must be webcam1 or webcam2: " + name); }
+    public synchronized void startAsync() {
+        if (state == State.OPENING || state == State.STREAMING) return;
+        final long token = ++generation; state = State.OPENING;
+        webcam.openCameraDeviceAsync(new OpenCvCamera.AsyncCameraOpenListener() {
+            @Override public void onOpened() { synchronized (ColorContourCamera.this) { if (token != generation || state != State.OPENING) return; try { webcam.startStreaming(STREAM_WIDTH, STREAM_HEIGHT, OpenCvCameraRotation.UPRIGHT); state=State.STREAMING; } catch (RuntimeException e) { fail(token, -1); } } }
+            @Override public void onError(int code) { synchronized (ColorContourCamera.this) { fail(token, code); } }
+        });
+    }
+    private void fail(long token, int code) { if (token != generation) return; errorCode=code; state=State.ERROR; pipeline.invalidate(); }
+    public synchronized void stop() { if (state == State.CLOSED || state == State.STOPPING) return; ++generation; state=State.STOPPING; pipeline.invalidate(); try { webcam.stopStreaming(); } catch (RuntimeException ignored) {} try { webcam.closeCameraDevice(); } catch (RuntimeException ignored) {} pipeline.release(); state=State.CLOSED; }
+    public Result getLatestResult() { Result r=pipeline.latest.get(); return r.state == state ? r : Result.empty(System.currentTimeMillis(), state, errorCode); }
+    public State getCameraState() { return state; } public int getCameraErrorCode() { return errorCode; } public double getProcessingMs() { return pipeline.processingMs; }
 
-    static String classify(double hue, double saturation, double value, double aspect, double circularity, double patternScore, ClassConfig[] classes) {
-        ClassConfig best=null; double score=0;
-        for(ClassConfig c:classes) {
-            boolean hueIn=c.hueMin<=hue&&hue<=c.hueMax;
-            if(hueIn&&saturation>=c.saturationMin&&value>=c.valueMin&&aspect>=c.aspectMin&&aspect<=c.aspectMax&&circularity>=c.circularityMin) {
-                double s=.25+.20*Math.min(1,saturation/255)+.15*Math.min(1,value/255)+.15*Math.min(1,circularity)+.25*patternScore;
-                if(s>score){score=s;best=c;}
-            }
-        }
-        return best==null?"":best.label;
-    }
+    static boolean fresh(Result r, long now) { return r.state == State.STREAMING && r.valid && r.authorizesMovement && now-r.timestampMs >= 0 && now-r.timestampMs <= MAX_RESULT_AGE_MS; }
 
-    static double patternScore(Mat gray, Rect rect) {
-        if (rect.width < PATTERN_GRID_SIZE || rect.height < PATTERN_GRID_SIZE) return 0;
-        Mat roi = gray.submat(rect);
-        Mat edges = new Mat();
-        Imgproc.Canny(roi, edges, 50, 150);
-        MatOfDouble mean = new MatOfDouble();
-        MatOfDouble std = new MatOfDouble();
-        Core.meanStdDev(edges, mean, std);
-        double score = Math.min(1.0, mean.get(0, 0)[0] / 96.0);
-        mean.release(); std.release(); edges.release(); roi.release();
-        return score;
-    }
     private static final class Pipeline extends OpenCvPipeline {
-        final Mode mode; final ClassConfig[] classes; final AtomicReference<Result> latest=new AtomicReference<>(Result.empty(0,0)); final Mat hsv=new Mat(), gray=new Mat(), mask=new Mat(), hierarchy=new Mat(); double processingMs; String stableLabel=""; int stableFrames; String pendingLabel=""; int pendingFrames;
-        Pipeline(Mode m,ClassConfig[] c){mode=m;classes=c.clone();}
-        public Mat processFrame(Mat input){ long start=System.nanoTime(); Imgproc.cvtColor(input,hsv,Imgproc.COLOR_RGB2HSV); Imgproc.cvtColor(input,gray,Imgproc.COLOR_RGB2GRAY); Core.inRange(hsv,new Scalar(0,35,35),new Scalar(179,255,255),mask); List<MatOfPoint> contours=new ArrayList<>(); Imgproc.findContours(mask,contours,hierarchy,Imgproc.RETR_EXTERNAL,Imgproc.CHAIN_APPROX_SIMPLE); MatOfPoint best=null; String label=""; double bestScore=0; for(MatOfPoint p:contours){double area=Imgproc.contourArea(p); Rect r=Imgproc.boundingRect(p); if(area<250||r.area()<=0){p.release();continue;} double perimeter=Imgproc.arcLength(new MatOfPoint2f(p.toArray()),true); double circularity=perimeter==0?0:4*Math.PI*area/(perimeter*perimeter); double aspect=(double)r.width/r.height; double hue=Core.mean(hsv.submat(r)).val[0], sat=Core.mean(hsv.submat(r)).val[1], val=Core.mean(hsv.submat(r)).val[2]; String candidate=classify(hue,sat,val,aspect,circularity,patternScore(gray,r),classes); double score=area/10000; if(!candidate.isEmpty()&&score>bestScore){if(best!=null)best.release();best=p;bestScore=Math.min(1,score);label=candidate;}else p.release();} long now=System.currentTimeMillis(); if(best==null)latest.set(Result.empty(now,contours.size())); else {Rect r=Imgproc.boundingRect(best); if (label.equals(stableLabel)) { stableFrames++; pendingLabel=""; pendingFrames=0; } else if (!label.equals(pendingLabel)) { pendingLabel=label; pendingFrames=1; } else if (++pendingFrames >= CLASS_SWITCH_FRAMES) { stableLabel=label; stableFrames=1; pendingLabel=""; pendingFrames=0; } boolean valid=bestScore>=.03; latest.set(new Result(now,valid,stableLabel,r.x+r.width/2.,r.y+r.height/2.,r.x+r.width/2.-input.cols()/2.,r.y+r.height/2.-input.rows()/2.,bestScore,contours.size(),stableFrames,mode==Mode.LEFT_CENTERING&&valid&&stableFrames>=5));best.release();} processingMs=(System.nanoTime()-start)/1e6; return input; }
-        void release(){hsv.release();gray.release();mask.release();hierarchy.release();}
+        final CameraId cameraId; final Mode mode; final ClassConfig[] classes; final AtomicReference<Result> latest = new AtomicReference<>();
+        final ORB orb=ORB.create(); final DescriptorMatcher matcher=DescriptorMatcher.create(DescriptorMatcher.BRUTEFORCE_HAMMING); final Mat gray=new Mat();
+        volatile double processingMs; private boolean released;
+        Pipeline(CameraId id, Mode mode, ClassConfig[] classes) { cameraId=id; this.mode=mode; this.classes=classes.clone(); invalidate(); }
+        @Override public Mat processFrame(Mat input) { if (released) return input; long start=System.nanoTime(); Imgproc.cvtColor(input, gray, Imgproc.COLOR_RGB2GRAY); MatOfKeyPoint keys=new MatOfKeyPoint(); Mat descriptors=new Mat(); orb.detectAndCompute(gray, new Mat(), keys, descriptors); List<Candidate> found=new ArrayList<>();
+            for (ClassConfig c: classes) { MatOfKeyPoint tk=new MatOfKeyPoint(); Mat td=new Mat(); orb.detectAndCompute(c.template, new Mat(), tk, td); if (td.empty() || descriptors.empty()) { tk.release(); td.release(); continue; } List<MatOfDMatch> matches=new ArrayList<>(); matcher.knnMatch(td, descriptors, matches, 2); int good=0; double score=0; for (MatOfDMatch pair: matches) { org.opencv.core.DMatch[] ds=pair.toArray(); if (ds.length>1 && ds[0].distance < .75*ds[1].distance) { good++; score += 1.0/(1.0+ds[0].distance); } pair.release(); } if (good>=MIN_DESCRIPTOR_MATCHES) { double confidence=Math.min(1, score/good); if (confidence>=Math.max(MIN_MATCH_CONFIDENCE,c.minConfidence)) found.add(new Candidate(c.label,input.cols()/2.,input.rows()/2.,confidence)); } tk.release(); td.release(); }
+            keys.release(); descriptors.release(); found.sort(Comparator.comparingDouble((Candidate c)->c.confidence).reversed().thenComparing(c->c.label)); List<Candidate> kept=new ArrayList<>(); for (Candidate c:found) { boolean duplicate=false; for(Candidate k:kept) if(Math.hypot(c.centerX-k.centerX,c.centerY-k.centerY)<MIN_CENTER_DISTANCE_PX) { duplicate=true; break; } if(!duplicate && kept.size()<MAX_CANDIDATES) kept.add(c); }
+            long now=System.currentTimeMillis(); Candidate best=kept.isEmpty()?null:kept.get(0); boolean valid=best!=null; double x=valid?best.centerX:Double.NaN, y=valid?best.centerY:Double.NaN, dx=valid?x-input.cols()/2.:Double.NaN, dy=valid?y-input.rows()/2.:Double.NaN; boolean fast=mode==Mode.SINGLE_TARGET && cameraId==CameraId.WEBCAM1 && valid; latest.set(new Result(now,valid,valid?best.label:"",x,y,dx,dy,valid?best.confidence:0,valid?1:0,fast,fast,State.STREAMING,0,kept)); processingMs=(System.nanoTime()-start)/1e6; return input; }
+        void invalidate() { latest.set(Result.empty(System.currentTimeMillis(), State.CREATED, 0)); }
+        void release() { if(released)return; released=true; gray.release(); for(ClassConfig c:classes)c.template.release(); }
     }
 }
