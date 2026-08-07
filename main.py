@@ -35,6 +35,19 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def camera_details(index: int, camera: cv2.VideoCapture) -> dict[str, object]:
+    opened = camera.isOpened()
+    details: dict[str, object] = {"index": index, "path": f"/dev/video{index}", "opened": opened}
+    if opened:
+        details.update({
+            "backend": camera.getBackendName(),
+            "width": int(camera.get(cv2.CAP_PROP_FRAME_WIDTH)),
+            "height": int(camera.get(cv2.CAP_PROP_FRAME_HEIGHT)),
+            "fps": camera.get(cv2.CAP_PROP_FPS),
+        })
+    return details
+
+
 def resolve_model(path: str) -> Path:
     model_path = Path(path).expanduser()
     if model_path.is_file():
@@ -64,17 +77,18 @@ def run(argv: list[str] | None = None) -> int:
 
     left_cam = cv2.VideoCapture(args.camera_left)
     right_cam = cv2.VideoCapture(args.camera_right)
-    unavailable = [
-        index
-        for index, camera in ((args.camera_left, left_cam), (args.camera_right, right_cam))
-        if not camera.isOpened()
-    ]
+    cameras = (
+        camera_details(args.camera_left, left_cam),
+        camera_details(args.camera_right, right_cam),
+    )
+    unavailable = [camera["index"] for camera in cameras if not camera["opened"]]
     if unavailable:
         left_cam.release()
         right_cam.release()
         print(json.dumps({
             "error": "camera open failed",
             "unavailable": unavailable,
+            "cameras": cameras,
             "hint": "dual-camera mode needs two V4L2 Video Capture devices; metadata nodes are not cameras",
         }), file=sys.stderr)
         return 1
