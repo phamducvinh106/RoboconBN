@@ -46,6 +46,11 @@ captures/
 # For Mac users
 .DS_Store
 
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
 # Keystore files
 # Uncomment the following lines if you do not want to check your keystore files in.
 #*.jks

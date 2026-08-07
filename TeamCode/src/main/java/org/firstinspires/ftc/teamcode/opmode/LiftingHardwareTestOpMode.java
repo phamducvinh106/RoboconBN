@@ -20,7 +20,7 @@ import org.firstinspires.ftc.teamcode.core.LiftingSequenceConfig;
 import org.firstinspires.ftc.teamcode.core.LiftingSequenceConfigLoader;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import org.firstinspires.ftc.teamcode.core.Pi5UartCameraTransport;
+import org.firstinspires.ftc.teamcode.core.Pi5CameraTransportFactory;
 import org.firstinspires.ftc.teamcode.core.ReleaseBackoutSensorManager;
 import org.firstinspires.ftc.teamcode.core.RobotHardware;
 import org.firstinspires.ftc.teamcode.core.StepperElevatorManager;
@@ -57,12 +57,13 @@ public final class LiftingHardwareTestOpMode extends LinearOpMode {
         ReleaseBackoutSensorManager release = new ReleaseBackoutSensorManager(
                 () -> !robot.endstop1.getState(), poseSource(pose));
         CameraAdapterManager cameras = new CameraAdapterManager(
-                new Pi5UartCameraTransport(System::nanoTime), config.sensorStaleNs);
+                Pi5CameraTransportFactory.create(hardwareMap, config, System::nanoTime),
+                config.sensorStaleNs);
         hardwareMap.get(WebcamName.class, "webcam2");
 
         telemetry.addLine("LOW POWER HARDWARE COMMUNICATION TEST");
         telemetry.addLine("A=home  B=READY1  X=PLACE  Y=HOLD  Dpad=IR/pose  LB/RB=cameras");
-        telemetry.addLine("Pi5 UART parser and OpenCV deferred; no state machine or placement");
+        telemetry.addLine("Pi5 I2C camera @ 0x42 via pi5Camera; dual webcam1/webcam2 payload");
         telemetry.update();
         waitForStart();
         boolean lastA = false, lastB = false, lastX = false, lastY = false;
@@ -87,8 +88,10 @@ public final class LiftingHardwareTestOpMode extends LinearOpMode {
                 telemetry.addData("IR", "left=%s right=%s both=%s polarity=active-low", ir.leftActive(), ir.rightActive(), ir.bothActive());
                 telemetry.addData("pose", "valid=%s x=%.2f y=%.2f heading=%.2f", reading.valid, reading.xCm, reading.yCm, reading.headingDeg);
                 telemetry.addData("release/backout", "released=%s x=%.2f y=%.2f", release.released(), release.reading().xCm, release.reading().yCm);
-                telemetry.addData("webcam1", "valid=%s fresh=%s ageNs=%d", left.valid, cameras.movementAuthorized(CameraChannel.WEBCAM1, now), now - left.timestampNs);
-                telemetry.addData("webcam2", "valid=%s fresh=%s ageNs=%d", right.valid, cameras.movementAuthorized(CameraChannel.WEBCAM2, now), now - right.timestampNs);
+                telemetry.addData("webcam1", "valid=%s fresh=%s dx=%.1f type=%s payload=0x%05X hb=%d",
+                        left.valid, cameras.movementAuthorized(CameraChannel.WEBCAM1, now), left.dxPx, left.blockType, left.rawPayload, left.heartbeat);
+                telemetry.addData("webcam2", "valid=%s fresh=%s type=%s payload=0x%05X hb=%d",
+                        right.valid, cameras.movementAuthorized(CameraChannel.WEBCAM2, now), right.blockType, right.rawPayload, right.heartbeat);
                 telemetry.addData("config", "version=%d fingerprint=%s timing=%d/%d ns", config.version, config.fingerprint, config.stepHighNs, config.stepLowNs);
                 telemetry.update();
                 idle();

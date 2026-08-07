@@ -1,1 +1,50 @@
-{"version":1,"placeLeft":0.25,"placeRight":0.75,"holdLeft":0.50,"holdRight":0.50,"stepHighNs":1000000,"stepLowNs":1000000,"irDebounceNs":100000000,"sensorStaleNs":250000000,"elevatorTimeoutNs":8000000000,"stateTimeoutNs":10000000000,"homeSteps":0,"ready1Steps":844,"lift1Steps":1781,"ready2Steps":4688,"lift2Steps":5625,"maxRetries":2,"settleCycles":3,"releaseBackOutCm":20.0,"positionToleranceCm":1.0,"headingToleranceDeg":3.0,"encoderFreshnessNs":250000000,"noProgressCm":0.1,"scanSpeed":0.2,"centerSpeed":0.15,"approachSpeed":0.1,"endstopActiveLow":true,"irActiveLow":true,"factories":{"01":{"near":{"x":100,"y":40,"heading":0},"placement":{"x":120,"y":40,"heading":0}},"02":{"near":{"x":100,"y":50,"heading":0},"placement":{"x":120,"y":50,"heading":0}},"03":{"near":{"x":100,"y":60,"heading":0},"placement":{"x":120,"y":60,"heading":0}},"04":{"near":{"x":100,"y":70,"heading":0},"placement":{"x":120,"y":70,"heading":0}}}}
+{
+  "version": 1,
+  "placeLeft": 0.25,
+  "placeRight": 0.75,
+  "holdLeft": 0.50,
+  "holdRight": 0.50,
+  "stepHighNs": 1000000,
+  "stepLowNs": 1000000,
+  "irDebounceNs": 100000000,
+  "sensorStaleNs": 250000000,
+  "elevatorTimeoutNs": 8000000000,
+  "stateTimeoutNs": 10000000000,
+  "homeSteps": 0,
+  "ready1Steps": 844,
+  "lift1Steps": 1781,
+  "ready2Steps": 4688,
+  "lift2Steps": 5625,
+  "maxRetries": 2,
+  "settleCycles": 3,
+  "releaseBackOutCm": 20.0,
+  "positionToleranceCm": 1.0,
+  "headingToleranceDeg": 3.0,
+  "encoderFreshnessNs": 250000000,
+  "noProgressCm": 0.1,
+  "scanSpeed": 0.2,
+  "centerSpeed": 0.15,
+  "approachSpeed": 0.1,
+  "pi5I2cAddress": 66,
+  "cameraFrameWidth": 320,
+  "endstopActiveLow": true,
+  "irActiveLow": true,
+  "factories": {
+    "01": {
+      "near": { "x": 100, "y": 40, "heading": 0 },
+      "placement": { "x": 120, "y": 40, "heading": 0 }
+    },
+    "02": {
+      "near": { "x": 100, "y": 50, "heading": 0 },
+      "placement": { "x": 120, "y": 50, "heading": 0 }
+    },
+    "03": {
+      "near": { "x": 100, "y": 60, "heading": 0 },
+      "placement": { "x": 120, "y": 60, "heading": 0 }
+    },
+    "04": {
+      "near": { "x": 100, "y": 70, "heading": 0 },
+      "placement": { "x": 120, "y": 70, "heading": 0 }
+    }
+  }
+}

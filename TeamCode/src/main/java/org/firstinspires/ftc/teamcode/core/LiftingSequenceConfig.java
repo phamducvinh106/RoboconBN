@@ -22,6 +22,8 @@ public final class LiftingSequenceConfig {
     public final boolean endstopActiveLow, irActiveLow;
     public final String webcam1Identity, webcam2Identity;
     public final double scanSpeed, centerSpeed, approachSpeed;
+    public final int pi5I2cAddress, cameraFrameWidth;
+    public final String[] blockTypesByCode;
     public final Map<String, Factory> factories;
     public final String fingerprint;
     public static final long STEP_HIGH_NS=1_000_000L, STEP_LOW_NS=1_000_000L;
@@ -32,7 +34,7 @@ public final class LiftingSequenceConfig {
         stepHighNs=n.get("stepHighNs").longValue(); stepLowNs=n.get("stepLowNs").longValue(); irDebounceNs=n.get("irDebounceNs").longValue(); sensorStaleNs=n.get("sensorStaleNs").longValue(); elevatorTimeoutNs=n.get("elevatorTimeoutNs").longValue(); stateTimeoutNs=n.get("stateTimeoutNs").longValue();
         homeSteps=n.get("homeSteps").intValue(); ready1Steps=n.get("ready1Steps").intValue(); lift1Steps=n.get("lift1Steps").intValue(); ready2Steps=n.get("ready2Steps").intValue(); lift2Steps=n.get("lift2Steps").intValue(); maxRetries=n.get("maxRetries").intValue(); settleCycles=n.get("settleCycles").intValue();
         releaseBackOutCm=n.get("releaseBackOutCm"); positionToleranceCm=n.get("positionToleranceCm"); headingToleranceDeg=n.get("headingToleranceDeg"); encoderFreshnessNs=n.get("encoderFreshnessNs"); noProgressCm=n.get("noProgressCm");
-        endstopActiveLow=b.get("endstopActiveLow"); irActiveLow=b.get("irActiveLow"); webcam1Identity="webcam1"; webcam2Identity="webcam2"; scanSpeed=n.get("scanSpeed"); centerSpeed=n.get("centerSpeed"); approachSpeed=n.get("approachSpeed"); this.factories=Collections.unmodifiableMap(factories); this.fingerprint=fingerprint;
+        endstopActiveLow=b.get("endstopActiveLow"); irActiveLow=b.get("irActiveLow"); webcam1Identity="webcam1"; webcam2Identity="webcam2"; scanSpeed=n.get("scanSpeed"); centerSpeed=n.get("centerSpeed"); approachSpeed=n.get("approachSpeed"); pi5I2cAddress=n.get("pi5I2cAddress").intValue(); cameraFrameWidth=n.get("cameraFrameWidth").intValue(); blockTypesByCode=new String[]{"01","02","03","04"}; this.factories=Collections.unmodifiableMap(factories); this.fingerprint=fingerprint;
     }
     public Factory factoryFor(String type) { Factory f=factories.get(type); if(f==null) throw new IllegalArgumentException("unknown block type: "+type); return f; }
     public static Factory factory(String type) { return defaultFactory(type); }
