@@ -33,9 +33,10 @@ fi
 echo "==> tests"
 python3 -m unittest block_detected_for_pi.test_cdc -q
 python3 -m unittest block_detected_for_pi.test_payload -q
+python3 -m unittest block_detected_for_pi.test_monitor -q
 
-echo "==> vision smoke (stdout only, 10 frames)"
-python3 main.py --no-cdc --frames 10
+echo "==> vision smoke (headless, 10 frames)"
+python3 main.py --no-cdc --no-ui --frames 10
 
 echo "OK: Pi synced to test branch. Run CDC link test:"
 echo "  python3 main.py --cdc-device /dev/ttyGS0"

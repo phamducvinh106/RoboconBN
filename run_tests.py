@@ -147,6 +147,12 @@ SUITES: tuple[Suite, ...] = (
         "USB CDC JSON packet shape for Hub receiver",
         python_module="block_detected_for_pi.test_cdc",
     ),
+    Suite(
+        "python-monitor",
+        "python",
+        "CLI monitor snapshot thresholds and render smoke",
+        python_module="block_detected_for_pi.test_monitor",
+    ),
 )
 
 
