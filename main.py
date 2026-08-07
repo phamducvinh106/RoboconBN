@@ -21,8 +21,10 @@ DEFAULT_UART_PORT = "/dev/serial0"
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Pi 5 dual-camera block detection with UART output")
     parser.add_argument("--model", default=DEFAULT_MODEL)
-    parser.add_argument("--camera-left", type=int, default=0)
-    parser.add_argument("--camera-right", type=int, default=1)
+    parser.add_argument("--camera-left", type=int, default=0,
+                        help="V4L2 index for left cam (often /dev/video0)")
+    parser.add_argument("--camera-right", type=int, default=2,
+                        help="V4L2 index for right cam (often /dev/video2; not video1 metadata)")
     parser.add_argument("--size", type=int, default=320)
     parser.add_argument("--conf", type=float, default=0.25)
     parser.add_argument("--frames", type=int, default=0)
