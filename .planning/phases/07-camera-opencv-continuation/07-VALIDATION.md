@@ -55,6 +55,9 @@ Phase 7 has one transport path: no production `DigitalUartRx`, `CameraFrameContr
 - Verify plan mapping includes `07-01`, `07-02`, and `07-03`.
 - Verify Phase 7 adds no production `DigitalUartRx`, `CameraFrameContract`, `CameraAdapterManager`, packed 20-bit decoder, I2C wiring, or UART wiring.
 - Verify `PlaceholderCameraTransport` remains invalid/fail-closed and `DigitalUartRx` remains bench-only.
+- Verify no production camera consumer constructs or references `DigitalUartRx`; its only runtime use is `DigitalUartRxTestOpMode` for bench observation.
+- Verify no production camera wiring uses `I2C`, `UART`, packed 20-bit decoding, or a replacement transport. `LiftingSequenceOpMode` and `LiftingHardwareTestOpMode` retain `PlaceholderCameraTransport`, which always returns invalid frames.
+- Require future protocol evidence before decoder work: physical framing and idle level, byte order, checksum, timestamp source/units, timeout/freshness, channel identity, partial-read behavior, reserved-code rejection, and atomic snapshot semantics.
 
 ## Behavior Checks
 
