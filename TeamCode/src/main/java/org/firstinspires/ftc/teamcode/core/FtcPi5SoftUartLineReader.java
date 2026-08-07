@@ -4,28 +4,32 @@ import com.qualcomm.robotcore.hardware.DigitalChannel;
 
 /**
  * Software UART receiver on a Hub digital input (Pi TX -> digital IN).
- * Runs a background sampler at low baud for reliability.
+ * Samples on the main OpMode thread after {@code idle()} so Lynx refreshes the pin cache.
  */
 public final class FtcPi5SoftUartLineReader implements Pi5UartLineReader {
+    private static final int STATE_IDLE = 0;
+    private static final int STATE_RECEIVING = 1;
+
     private final DigitalChannel rx;
-    private final int baud;
     private final long bitNs;
     private final ArrayRing buffer = new ArrayRing(512);
-    private final Thread thread;
-    private volatile boolean running = true;
+    private int state = STATE_IDLE;
+    private long startNs;
+    private int result;
+    private int bitsLatched;
+    private boolean lastPinHigh = true;
+    private int pinEdgesThisSec;
+    private int pinEdgesPerSec;
+    private int bytesQueuedTotal;
+    private long edgeWindowStartNs = System.nanoTime();
 
     public FtcPi5SoftUartLineReader(DigitalChannel rx, int baud) {
         if (rx == null || baud < 300 || baud > 19200) {
             throw new IllegalArgumentException("invalid soft uart configuration");
         }
         this.rx = rx;
-        this.baud = baud;
-        this.bitNs = 1_000_000_000L / baud;
+        this.bitNs = Math.round(1_000_000_000.0 / baud);
         rx.setMode(DigitalChannel.Mode.INPUT);
-        this.thread = new Thread(this::sampleLoop, "pi5-soft-uart-rx");
-        this.thread.setDaemon(true);
-        this.thread.setPriority(Thread.MAX_PRIORITY);
-        this.thread.start();
     }
 
     @Override
@@ -33,68 +37,82 @@ public final class FtcPi5SoftUartLineReader implements Pi5UartLineReader {
         return buffer.drain();
     }
 
+    @Override
+    public void tickAfterHubIdle(long nowNs) {
+        tickAfterIdle(nowNs);
+    }
+
+    public void tickAfterIdle(long nowNs) {
+        boolean pinHigh = rx.getState();
+        if (pinHigh != lastPinHigh) {
+            pinEdgesThisSec++;
+        }
+        if (nowNs - edgeWindowStartNs >= 1_000_000_000L) {
+            pinEdgesPerSec = pinEdgesThisSec;
+            pinEdgesThisSec = 0;
+            edgeWindowStartNs = nowNs;
+        }
+
+        if (state == STATE_IDLE) {
+            if (!pinHigh && lastPinHigh) {
+                beginFrame(nowNs);
+            }
+        } else {
+            long elapsed = nowNs - startNs;
+            for (int bit = 0; bit < 8; bit++) {
+                long sampleNs = bitNs * (bit + 1) + bitNs / 2;
+                int mask = 1 << bit;
+                if ((bitsLatched & mask) == 0 && elapsed >= sampleNs) {
+                    if (pinHigh) {
+                        result |= mask;
+                    }
+                    bitsLatched |= mask;
+                }
+            }
+            if (elapsed >= bitNs * 9 + bitNs / 2) {
+                if (bitsLatched == 0xFF && pinHigh) {
+                    buffer.offer((byte) result);
+                    bytesQueuedTotal++;
+                }
+                state = STATE_IDLE;
+            } else if (elapsed > bitNs * 12) {
+                state = STATE_IDLE;
+            }
+        }
+        lastPinHigh = pinHigh;
+    }
+
+    private void beginFrame(long nowNs) {
+        state = STATE_RECEIVING;
+        startNs = nowNs;
+        result = 0;
+        bitsLatched = 0;
+    }
+
     public boolean pinState() {
         return rx.getState();
     }
 
-    public boolean isRunning() {
-        return running;
+    public int pinEdgesPerSecond() {
+        return pinEdgesPerSec;
     }
 
-    public boolean isThreadAlive() {
-        return thread.isAlive();
+    public int bytesQueuedTotal() {
+        return bytesQueuedTotal;
     }
 
-    public void close() {
-        running = false;
-        thread.interrupt();
+    public String receiverState() {
+        return state == STATE_IDLE ? "IDLE" : "RECV";
     }
 
-    private void sampleLoop() {
-        while (running) {
-            int value = readByte();
-            if (value >= 0) {
-                buffer.offer((byte) value);
-            }
-        }
+    public int bitsLatchedCount() {
+        return Integer.bitCount(bitsLatched);
     }
 
-    private int readByte() {
-        waitForLow();
-        if (!running) {
-            return -1;
-        }
-        sleepHalfBit();
-        int result = 0;
-        for (int bit = 0; bit < 8; bit++) {
-            sleepBit();
-            if (rx.getState()) {
-                result |= (1 << bit);
-            }
-        }
-        sleepBit();
-        return result;
-    }
-
-    private void waitForLow() {
-        while (running && rx.getState()) {
-            // Tight spin — Thread.sleep cannot reliably sample 104us start bits @ 9600 on Android.
-        }
-    }
-
-    private void sleepHalfBit() {
-        busyWait(bitNs / 2);
-    }
-
-    private void sleepBit() {
-        busyWait(bitNs);
-    }
-
-    private void busyWait(long nanos) {
-        long deadline = System.nanoTime() + nanos;
-        while (running && System.nanoTime() < deadline) {
-            // spin
-        }
+    public static int recommendedHubSamples(int baud) {
+        long charNs = Math.round(10_000_000_000.0 / baud);
+        int samples = (int) Math.ceil(charNs / 800_000.0);
+        return Math.max(16, Math.min(samples, 40));
     }
 
     private static final class ArrayRing {

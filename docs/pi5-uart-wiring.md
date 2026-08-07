@@ -90,8 +90,9 @@ python3 tools/pi5_bench.py --mode uart-listen --port /dev/serial0 --baud 9600
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| `LINK=WAITING`, bytes=0 | No signal / wrong pin | TX→RX, common GND, Pi bench running |
-| bytes>0, decodeErr rising | Baud mismatch or noise | Match 9600 both sides; shorten wire |
+| `LINK=WAITING`, bytes=0, pinEdges/s=0 | No signal / wrong pin | TX→RX, common GND, Pi bench running |
+| `LINK=WAITING`, bytes=0, pinEdges/s>0 | Hub soft-UART not polling after idle | Deploy latest APK; use baud **9600** |
+| bytes>0, decodeErr rising | Baud mismatch or noise | Match **9600** both sides; shorten wire |
 | hb stuck, fresh=false | Heartbeat not changing | Use `--loop`; check Pi publisher |
 | OpMode init crash | Missing `pi5UartRx` in config | Add digital input in Robot Config |
 

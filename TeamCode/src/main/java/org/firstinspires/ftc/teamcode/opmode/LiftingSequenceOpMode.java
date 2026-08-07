@@ -22,7 +22,7 @@ public final class LiftingSequenceOpMode extends LinearOpMode {
         RobotHardware robot = new RobotHardware(hardwareMap);
         MecanumDrive drive = new MecanumDrive(hardwareMap, "leftfront", "rightfront", "leftback", "rightback", robot.localizer);
         final CameraAdapterManager cameras = new CameraAdapterManager(
-                Pi5CameraTransportFactory.create(hardwareMap, config, System::nanoTime),
+                Pi5CameraTransportFactory.createWithHubPolling(hardwareMap, config, System::nanoTime, this::idle),
                 config.sensorStaleNs);
         LiftingSequenceStateMachine machine = new LiftingSequenceStateMachine(System::nanoTime, new LiftingSequenceStateMachine.Actuators() {
             public void stop() { robot.stopActuators(); drive.stop(); }

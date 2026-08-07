@@ -57,7 +57,7 @@ public final class LiftingHardwareTestOpMode extends LinearOpMode {
         ReleaseBackoutSensorManager release = new ReleaseBackoutSensorManager(
                 () -> !robot.endstop1.getState(), poseSource(pose));
         CameraAdapterManager cameras = new CameraAdapterManager(
-                Pi5CameraTransportFactory.create(hardwareMap, config, System::nanoTime),
+                Pi5CameraTransportFactory.createWithHubPolling(hardwareMap, config, System::nanoTime, this::idle),
                 config.sensorStaleNs);
         hardwareMap.get(WebcamName.class, "webcam2");
 

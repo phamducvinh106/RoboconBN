@@ -19,7 +19,16 @@ class SerialUartPort:
     def __init__(self, port: str, baud: int) -> None:
         import serial  # type: ignore[import-untyped]
 
-        self._serial = serial.Serial(port=port, baudrate=baud, timeout=0)
+        self._serial = serial.Serial(
+            port=port,
+            baudrate=baud,
+            bytesize=serial.EIGHTBITS,
+            parity=serial.PARITY_NONE,
+            stopbits=serial.STOPBITS_ONE,
+            timeout=0,
+            rtscts=False,
+            dsrdtr=False,
+        )
 
     def write(self, data: bytes) -> int:
         return self._serial.write(data)

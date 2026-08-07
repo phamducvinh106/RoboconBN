@@ -40,8 +40,8 @@ public final class Pi5UartCommTestOpMode extends LinearOpMode {
             return;
         }
 
-        Pi5UartCameraTransport transport = (Pi5UartCameraTransport) Pi5CameraTransportFactory.create(
-                hardwareMap, config, System::nanoTime);
+        Pi5UartCameraTransport transport = Pi5CameraTransportFactory.createWithHubPolling(
+                hardwareMap, config, System::nanoTime, this::idle);
         CameraAdapterManager cameras = new CameraAdapterManager(transport, config.sensorStaleNs);
         DigitalChannel rxPin = hardwareMap.get(DigitalChannel.class, config.pi5UartDeviceName);
         Pi5UartLineReader uartReader = transport.uartReader();
@@ -51,8 +51,8 @@ public final class Pi5UartCommTestOpMode extends LinearOpMode {
 
         telemetry.addLine("PI5 UART COMMUNICATION TEST");
         telemetry.addLine("Requires: digital input pi5UartRx (Pi GPIO14 TX -> this pin)");
-        telemetry.addLine("Verify Robot Config: pi5UartRx port matches physical wire (not UART debug port)");
-        telemetry.addLine("Pi: python tools/pi5_bench.py --loop --port /dev/serial0");
+        telemetry.addLine("Manual test: short pi5UartRx to GND -> pin=LOW, pinEdges/s>0 when removed");
+        telemetry.addLine("Pi: python tools/pi5_bench.py --loop --port /dev/serial0 --baud 9600");
         telemetry.addData("config", "baud=%d device=%s staleMs=%.0f",
                 config.pi5UartBaud, config.pi5UartDeviceName, config.sensorStaleNs / 1e6);
         telemetry.update();
@@ -70,7 +70,9 @@ public final class Pi5UartCommTestOpMode extends LinearOpMode {
             Pi5UartCameraTransport.Diagnostics diag = transport.diagnostics();
             boolean linkOk = left.valid && cameras.movementAuthorized(CameraChannel.WEBCAM1, now);
 
+            idle();
             boolean pinState = rxPin.getState();
+            int samplerEdges = softUart == null ? 0 : softUart.pinEdgesPerSecond();
             if (pinState != lastPinState) {
                 pinEdgesThisSec++;
                 lastPinState = pinState;
@@ -81,18 +83,22 @@ public final class Pi5UartCommTestOpMode extends LinearOpMode {
                 edgeWindowStartNs = now;
             }
 
-            String uartThread = softUart == null
-                    ? "N/A"
-                    : (softUart.isThreadAlive() && softUart.isRunning() ? "ALIVE" : "DEAD");
-            String hint = classifyHint(diag, linkOk, pinEdgesPerSec);
+            String uartMode = softUart == null ? "N/A" : "MAIN+IDLE";
+            String hint = classifyHint(diag, linkOk, Math.max(pinEdgesPerSec, samplerEdges));
 
             telemetry.addData("LINK", linkOk ? "OK" : "WAITING");
             telemetry.addData("hint", hint);
             telemetry.addData("pin", pinState ? "HIGH" : "LOW");
             telemetry.addData("pinEdges/s", pinEdgesPerSec);
-            telemetry.addData("uartThread", uartThread);
-            telemetry.addData("rx", "bytes=%d framesOk=%d decodeErr=%d", diag.bytesReceived, diag.framesOk, diag.decodeErrors);
+            telemetry.addData("samplerEdges/s", samplerEdges);
+            telemetry.addData("uartMode", uartMode);
+            telemetry.addData("uartRx", softUart == null ? "N/A"
+                    : String.format("%s bits=%d queued=%d", softUart.receiverState(),
+                    softUart.bitsLatchedCount(), softUart.bytesQueuedTotal()));
+            telemetry.addData("rx", "bytes=%d framesOk=%d decodeErr=%d buf=%d",
+                    diag.bytesReceived, diag.framesOk, diag.decodeErrors, diag.lineBufferLen);
             telemetry.addData("lastLine", diag.lastLine.isEmpty() ? "(none)" : diag.lastLine);
+            telemetry.addData("lastStatus", diag.lastStatus < 0 ? "n/a" : String.format("0x%02X", diag.lastStatus));
             telemetry.addData("webcam1", "valid=%s fresh=%s hb=%d type=%s payload=0x%05X dx=%.1f",
                     left.valid, cameras.movementAuthorized(CameraChannel.WEBCAM1, now),
                     left.heartbeat, left.blockType, left.rawPayload, left.dxPx);
@@ -118,7 +124,10 @@ public final class Pi5UartCommTestOpMode extends LinearOpMode {
             return "SIGNAL_NO_BYTES (soft-UART/baud)";
         }
         if (diag.bytesReceived > 0 && diag.framesOk == 0 && diag.decodeErrors > 0) {
-            return "BYTES_NO_DECODE (baud/noise)";
+            return "BYTES_NO_DECODE (baud/noise, check lastLine)";
+        }
+        if (diag.bytesReceived > 0 && diag.framesOk == 0 && diag.decodeErrors == 0) {
+            return "WAIT_LINE (bytes ok, no full line yet)";
         }
         if (diag.framesOk > 0) {
             return "WAIT_HB (frames ok, heartbeat stale)";

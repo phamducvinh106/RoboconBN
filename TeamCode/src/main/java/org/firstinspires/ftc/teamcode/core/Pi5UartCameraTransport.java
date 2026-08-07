@@ -16,6 +16,10 @@ public final class Pi5UartCameraTransport implements HardwareContracts.CameraTra
     private int framesOk;
     private int decodeErrors;
     private String lastLine = "";
+    private long lastGoodFrameNs = -1;
+    private int lastStatus = -1;
+    private Runnable hubIdleCallback;
+    private int hubSamplesPerRefresh;
 
     public Pi5UartCameraTransport(
             HardwareContracts.Clock clock,
@@ -33,6 +37,14 @@ public final class Pi5UartCameraTransport implements HardwareContracts.CameraTra
         this.blockTypes = blockTypes;
     }
 
+    public void enableHubPolling(Runnable idleCallback, int samplesPerRefresh) {
+        if (idleCallback == null || samplesPerRefresh < 1) {
+            throw new IllegalArgumentException("invalid hub polling configuration");
+        }
+        this.hubIdleCallback = idleCallback;
+        this.hubSamplesPerRefresh = samplesPerRefresh;
+    }
+
     @Override
     public CameraFrameContract read(CameraChannel channel) {
         refresh();
@@ -44,7 +56,7 @@ public final class Pi5UartCameraTransport implements HardwareContracts.CameraTra
     }
 
     public Diagnostics diagnostics() {
-        return new Diagnostics(bytesReceived, framesOk, decodeErrors, lastLine);
+        return new Diagnostics(bytesReceived, framesOk, decodeErrors, lastLine, lineBuffer.length(), lastStatus);
     }
 
     public Pi5UartLineReader uartReader() {
@@ -52,17 +64,40 @@ public final class Pi5UartCameraTransport implements HardwareContracts.CameraTra
     }
 
     private void refresh() {
+        pollHub();
         long now = clock.nowNs();
         byte[] chunk = reader.pollBytes();
         if (chunk.length > 0) {
             bytesReceived += chunk.length;
             lineBuffer.append(new String(chunk, StandardCharsets.US_ASCII));
+            syncLineBuffer();
             int newline;
             while ((newline = lineBuffer.indexOf("\n")) >= 0) {
-                String line = lineBuffer.substring(0, newline);
+                String line = lineBuffer.substring(0, newline).trim();
                 lineBuffer.delete(0, newline + 1);
-                applyLine(line, now);
+                if (!line.isEmpty()) {
+                    applyLine(line, now);
+                }
             }
+        }
+    }
+
+    private void syncLineBuffer() {
+        int start = lineBuffer.indexOf(Pi5UartFrameCodec.PREFIX);
+        if (start > 0) {
+            lineBuffer.delete(0, start);
+        } else if (start < 0 && lineBuffer.length() > 64) {
+            lineBuffer.delete(0, lineBuffer.length() - 16);
+        }
+    }
+
+    private void pollHub() {
+        if (hubIdleCallback == null) {
+            return;
+        }
+        for (int i = 0; i < hubSamplesPerRefresh; i++) {
+            hubIdleCallback.run();
+            reader.tickAfterHubIdle(clock.nowNs());
         }
     }
 
@@ -72,8 +107,12 @@ public final class Pi5UartCameraTransport implements HardwareContracts.CameraTra
             Pi5UartFrameCodec.Pi5UartFrame frame = Pi5UartFrameCodec.decode(line);
             byte[] registers = Pi5UartFrameCodec.toRegisters(frame);
             Pi5CameraSnapshot next = Pi5PayloadDecoder.fromRegisters(registers, nowNs);
-            if (next.readComplete && next.frameValid) {
-                framesOk++;
+            lastStatus = frame.status;
+            if (next.readComplete) {
+                lastGoodFrameNs = nowNs;
+                if (next.frameValid) {
+                    framesOk++;
+                }
                 if (next.heartbeat != lastHeartbeat) {
                     lastHeartbeat = next.heartbeat;
                     lastHeartbeatChangeNs = nowNs;
@@ -91,22 +130,26 @@ public final class Pi5UartCameraTransport implements HardwareContracts.CameraTra
         public final int framesOk;
         public final int decodeErrors;
         public final String lastLine;
+        public final int lineBufferLen;
+        public final int lastStatus;
 
-        Diagnostics(int bytesReceived, int framesOk, int decodeErrors, String lastLine) {
+        Diagnostics(int bytesReceived, int framesOk, int decodeErrors, String lastLine, int lineBufferLen, int lastStatus) {
             this.bytesReceived = bytesReceived;
             this.framesOk = framesOk;
             this.decodeErrors = decodeErrors;
             this.lastLine = lastLine == null ? "" : lastLine;
+            this.lineBufferLen = lineBufferLen;
+            this.lastStatus = lastStatus;
         }
     }
 
     private boolean heartbeatFresh(long nowNs) {
-        if (lastHeartbeat < 0 || lastHeartbeatChangeNs < 0) {
+        if (lastGoodFrameNs < 0) {
             return false;
         }
-        if (nowNs < lastHeartbeatChangeNs) {
+        if (nowNs < lastGoodFrameNs) {
             return false;
         }
-        return nowNs - lastHeartbeatChangeNs <= maxAgeNs;
+        return nowNs - lastGoodFrameNs <= maxAgeNs;
     }
 }
