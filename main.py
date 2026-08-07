@@ -64,8 +64,19 @@ def run(argv: list[str] | None = None) -> int:
 
     left_cam = cv2.VideoCapture(args.camera_left)
     right_cam = cv2.VideoCapture(args.camera_right)
-    if not left_cam.isOpened() or not right_cam.isOpened():
-        print(json.dumps({"error": "camera open failed"}), file=sys.stderr)
+    unavailable = [
+        index
+        for index, camera in ((args.camera_left, left_cam), (args.camera_right, right_cam))
+        if not camera.isOpened()
+    ]
+    if unavailable:
+        left_cam.release()
+        right_cam.release()
+        print(json.dumps({
+            "error": "camera open failed",
+            "unavailable": unavailable,
+            "hint": "dual-camera mode needs two V4L2 Video Capture devices; metadata nodes are not cameras",
+        }), file=sys.stderr)
         return 1
 
     try:
