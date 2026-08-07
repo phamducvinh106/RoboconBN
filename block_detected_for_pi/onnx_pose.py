@@ -89,10 +89,16 @@ def _parse_names(metadata: dict[str, str]) -> dict[int, str]:
 class OnnxPoseModel:
     """Run YOLO11 pose ONNX models with CPUExecutionProvider only."""
 
-    def __init__(self, model_path: Path) -> None:
+    def __init__(self, model_path: Path, *, threads: int = 4) -> None:
         self.model_path = model_path
+        options = ort.SessionOptions()
+        options.log_severity_level = 3
+        options.intra_op_num_threads = threads
+        options.inter_op_num_threads = 1
+        options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
         self.session = ort.InferenceSession(
             str(model_path),
+            sess_options=options,
             providers=["CPUExecutionProvider"],
         )
         metadata = self.session.get_modelmeta().custom_metadata_map
@@ -101,33 +107,19 @@ class OnnxPoseModel:
         self.input_name = self.session.get_inputs()[0].name
         self.output_names = [output.name for output in self.session.get_outputs()]
 
-    def predict(
+    def _decode(
         self,
-        frame: np.ndarray,
+        prediction: np.ndarray,
         *,
-        image_size: int,
+        input_shape: tuple[int, int],
+        orig_shape: tuple[int, int],
+        ratio_pad: tuple[tuple[float, float], tuple[int, int]],
         confidence: float,
-        class_filter: str | int | None = None,
+        class_filter: str | int | None,
     ) -> list[PoseDetection]:
-        orig_shape = frame.shape[:2]
-        letterboxed, ratio, pad = _letterbox(
-            frame,
-            (image_size, image_size),
-            stride=self.stride,
-        )
-        blob = letterboxed[:, :, ::-1].astype(np.float32) / 255.0
-        blob = np.transpose(blob, (2, 0, 1))
-        blob = np.expand_dims(blob, 0)
-        output = self.session.run(self.output_names, {self.input_name: blob})[0]
-        if output.ndim != 3:
-            return []
-        prediction = np.transpose(output[0], (1, 0))
-        if prediction.shape[1] < 8:
-            return []
-
-        nc = 4
-        extra = prediction.shape[1] - nc - 4
-        if extra < 0:
+        prediction = np.transpose(prediction, (1, 0))
+        nc = len(self.names)
+        if nc == 0 or prediction.shape[1] < 4 + nc:
             return []
 
         boxes = _xywh2xyxy(prediction[:, :4])
@@ -138,11 +130,9 @@ class OnnxPoseModel:
         if not np.any(keep):
             return []
 
-        boxes = boxes[keep]
+        boxes = _scale_boxes(input_shape, boxes[keep], orig_shape, ratio_pad)
         class_ids = class_ids[keep]
         confidences = confidences[keep]
-        boxes = _scale_boxes((image_size, image_size), boxes, orig_shape, (ratio, pad))
-
         detections: list[PoseDetection] = []
         for box, class_id, score in zip(boxes, class_ids, confidences, strict=True):
             class_name = self.names.get(int(class_id), str(int(class_id)))
@@ -159,3 +149,62 @@ class OnnxPoseModel:
                 )
             )
         return detections
+
+    def predict_batch(
+        self,
+        frames: list[np.ndarray] | tuple[np.ndarray, ...],
+        *,
+        image_size: int,
+        confidence: float,
+        class_filter: str | int | None = None,
+    ) -> list[list[PoseDetection]]:
+        prepared: list[np.ndarray] = []
+        contexts: list[tuple[tuple[int, int], tuple[tuple[float, float], tuple[int, int]]]] = []
+        input_shape: tuple[int, int] | None = None
+        for frame in frames:
+            orig_shape = frame.shape[:2]
+            letterboxed, ratio, pad = _letterbox(
+                frame,
+                (image_size, image_size),
+                stride=self.stride,
+            )
+            if input_shape is None:
+                input_shape = letterboxed.shape[:2]
+            elif letterboxed.shape[:2] != input_shape:
+                raise ValueError("batch frames must produce the same ONNX input shape")
+            prepared.append(np.transpose(letterboxed[:, :, ::-1], (2, 0, 1)))
+            contexts.append((orig_shape, (ratio, pad)))
+        if not prepared or input_shape is None:
+            return []
+
+        blob = np.ascontiguousarray(np.stack(prepared), dtype=np.float32)
+        blob /= 255.0
+        output = self.session.run(self.output_names, {self.input_name: blob})[0]
+        if output.ndim != 3 or output.shape[0] != len(frames):
+            return [[] for _ in frames]
+        return [
+            self._decode(
+                prediction,
+                input_shape=input_shape,
+                orig_shape=orig_shape,
+                ratio_pad=ratio_pad,
+                confidence=confidence,
+                class_filter=class_filter,
+            )
+            for prediction, (orig_shape, ratio_pad) in zip(output, contexts, strict=True)
+        ]
+
+    def predict(
+        self,
+        frame: np.ndarray,
+        *,
+        image_size: int,
+        confidence: float,
+        class_filter: str | int | None = None,
+    ) -> list[PoseDetection]:
+        return self.predict_batch(
+            (frame,),
+            image_size=image_size,
+            confidence=confidence,
+            class_filter=class_filter,
+        )[0]

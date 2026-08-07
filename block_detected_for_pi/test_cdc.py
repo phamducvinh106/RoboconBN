@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import queue
+import threading
 import unittest
 from types import SimpleNamespace
 
@@ -17,7 +19,7 @@ class _MockSerial:
         self.lines.append(data.decode("ascii"))
         return len(data)
 
-    def flush(self) -> None:
+    def close(self) -> None:
         return
 
 
@@ -25,7 +27,14 @@ class CdcPublisherTest(unittest.TestCase):
     def test_dual_camera_packet_shape(self) -> None:
         port = _MockSerial()
         publisher = CdcPublisher.__new__(CdcPublisher)
+        publisher._serial_timeout = Exception  # type: ignore[attr-defined]
         publisher._serial = port  # type: ignore[attr-defined]
+        publisher._pending = queue.Queue(maxsize=1)  # type: ignore[attr-defined]
+        publisher.dropped = 0  # type: ignore[attr-defined]
+        publisher.written = 0  # type: ignore[attr-defined]
+        publisher.last_error = ""  # type: ignore[attr-defined]
+        publisher._worker = threading.Thread(target=publisher._write_loop, daemon=True)  # type: ignore[attr-defined]
+        publisher._worker.start()  # type: ignore[attr-defined]
 
         left = SimpleNamespace(
             found=True, class_id=1, class_name="02", confidence=0.9, x=0.4, y=0.5
@@ -33,8 +42,10 @@ class CdcPublisherTest(unittest.TestCase):
         right = SimpleNamespace(
             found=True, class_id=3, class_name="04", confidence=0.8, x=0.6, y=0.5
         )
-        publisher.publish(left=left, right=right, frame_valid=True)
+        self.assertTrue(publisher.publish(left=left, right=right, frame_valid=True))
+        publisher.close()
 
+        self.assertEqual(len(port.lines), 1)
         packet = json.loads(port.lines[0].strip())
         self.assertEqual(packet["v"], 1)
         self.assertTrue(packet["frame_valid"])
