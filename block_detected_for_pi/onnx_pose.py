@@ -1,7 +1,8 @@
-"""ONNX Runtime inference for Ultralytics YOLO pose exports (no PyTorch/CUDA)."""
+"""ONNX Runtime inference for Ultralytics YOLO exports (no PyTorch/CUDA)."""
 
 from __future__ import annotations
 
+import ast
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -10,6 +11,10 @@ import cv2
 import numpy as np
 import onnxruntime as ort
 
+from block_detected_for_pi.model_benchmark.compat import ModelInputSpec, inspect_model_input
+
+EXPECTED_CLASS_COUNT = 4
+
 
 @dataclass(frozen=True, slots=True)
 class PoseDetection:
@@ -17,6 +22,18 @@ class PoseDetection:
     class_id: int
     class_name: str
     xyxy: tuple[float, float, float, float]
+
+
+def _resize_exact(
+    image: np.ndarray,
+    new_shape: tuple[int, int],
+) -> tuple[np.ndarray, tuple[float, float], tuple[int, int]]:
+    height, width = image.shape[:2]
+    target_h, target_w = new_shape
+    resized = cv2.resize(image, (target_w, target_h), interpolation=cv2.INTER_LINEAR)
+    gain_y = target_h / height
+    gain_x = target_w / width
+    return resized, (gain_y, gain_x), (0, 0)
 
 
 def _letterbox(
@@ -63,7 +80,13 @@ def _scale_boxes(
     boxes[:, 1] -= pad_y
     boxes[:, 2] -= pad_x
     boxes[:, 3] -= pad_y
-    boxes[:, :4] /= gain
+    if isinstance(ratio_pad[0], tuple) and ratio_pad[0][0] != ratio_pad[0][1]:
+        boxes[:, 0] /= ratio_pad[0][1]
+        boxes[:, 1] /= ratio_pad[0][0]
+        boxes[:, 2] /= ratio_pad[0][1]
+        boxes[:, 3] /= ratio_pad[0][0]
+    else:
+        boxes[:, :4] /= gain
     boxes[:, 0] = np.clip(boxes[:, 0], 0, orig_shape[1])
     boxes[:, 1] = np.clip(boxes[:, 1], 0, orig_shape[0])
     boxes[:, 2] = np.clip(boxes[:, 2], 0, orig_shape[1])
@@ -76,9 +99,12 @@ def _parse_names(metadata: dict[str, str]) -> dict[int, str]:
     if not raw:
         return {}
     try:
-        names = json.loads(raw.replace("'", '"'))
-    except json.JSONDecodeError:
-        return {}
+        names = ast.literal_eval(raw)
+    except (SyntaxError, ValueError):
+        try:
+            names = json.loads(raw.replace("'", '"'))
+        except json.JSONDecodeError:
+            return {}
     if isinstance(names, list):
         return {index: str(name) for index, name in enumerate(names)}
     if isinstance(names, dict):
@@ -86,8 +112,17 @@ def _parse_names(metadata: dict[str, str]) -> dict[int, str]:
     return {}
 
 
+def validate_model_schema(names: dict[int, str], output_channels: int | None = None) -> None:
+    if len(names) != EXPECTED_CLASS_COUNT:
+        raise ValueError(f"expected {EXPECTED_CLASS_COUNT} classes, found {len(names)}")
+    if output_channels is not None and output_channels < 4 + len(names):
+        raise ValueError(
+            f"output channels {output_channels} too small for {len(names)} classes"
+        )
+
+
 class OnnxPoseModel:
-    """Run YOLO11 pose ONNX models with CPUExecutionProvider only."""
+    """Run YOLO ONNX models with CPUExecutionProvider only."""
 
     def __init__(self, model_path: Path, *, threads: int = 4) -> None:
         self.model_path = model_path
@@ -102,10 +137,76 @@ class OnnxPoseModel:
             providers=["CPUExecutionProvider"],
         )
         metadata = self.session.get_modelmeta().custom_metadata_map
-        self.names = _parse_names(dict(metadata))
-        self.stride = int(metadata.get("stride", "32"))
+        self.metadata = dict(metadata)
+        self.names = _parse_names(self.metadata)
+        self.stride = int(self.metadata.get("stride", "32"))
+        self.task = str(self.metadata.get("task", "detect"))
         self.input_name = self.session.get_inputs()[0].name
         self.output_names = [output.name for output in self.session.get_outputs()]
+        output_shape = self.session.get_outputs()[0].shape
+        output_channels = int(output_shape[1]) if len(output_shape) > 1 and isinstance(output_shape[1], int) else None
+        validate_model_schema(self.names, output_channels)
+        self.input_spec = inspect_model_input(model_path)
+
+    def effective_image_size(self, image_size: int) -> int:
+        return self.input_spec.spatial_size or image_size
+
+    def _prepare_frames(
+        self,
+        frames: list[np.ndarray] | tuple[np.ndarray, ...],
+        *,
+        image_size: int,
+    ) -> tuple[list[np.ndarray], list[tuple[tuple[int, int], tuple[tuple[float, float], tuple[int, int]]]], tuple[int, int]]:
+        prepared: list[np.ndarray] = []
+        contexts: list[tuple[tuple[int, int], tuple[tuple[float, float], tuple[int, int]]]] = []
+        effective_size = self.effective_image_size(image_size)
+        input_shape: tuple[int, int] | None = None
+        for frame in frames:
+            orig_shape = frame.shape[:2]
+            if not self.input_spec.dynamic_spatial and self.input_spec.spatial_size is not None:
+                resized, ratio, pad = _resize_exact(frame, (effective_size, effective_size))
+            else:
+                resized, ratio, pad = _letterbox(
+                    frame,
+                    (effective_size, effective_size),
+                    stride=self.stride,
+                )
+            letterboxed = resized
+            if input_shape is None:
+                input_shape = letterboxed.shape[:2]
+            elif letterboxed.shape[:2] != input_shape:
+                raise ValueError("batch frames must produce the same ONNX input shape")
+            prepared.append(np.transpose(letterboxed[:, :, ::-1], (2, 0, 1)))
+            contexts.append((orig_shape, (ratio, pad)))
+        if not prepared or input_shape is None:
+            return [], [], (0, 0)
+        return prepared, contexts, input_shape
+
+    def _run_prepared_batch(
+        self,
+        prepared: list[np.ndarray],
+        contexts: list[tuple[tuple[int, int], tuple[tuple[float, float], tuple[int, int]]]],
+        input_shape: tuple[int, int],
+        *,
+        confidence: float,
+        class_filter: str | int | None,
+    ) -> list[list[PoseDetection]]:
+        blob = np.ascontiguousarray(np.stack(prepared), dtype=np.float32)
+        blob /= 255.0
+        output = self.session.run(self.output_names, {self.input_name: blob})[0]
+        if output.ndim != 3 or output.shape[0] != len(prepared):
+            return [[] for _ in prepared]
+        return [
+            self._decode(
+                prediction,
+                input_shape=input_shape,
+                orig_shape=orig_shape,
+                ratio_pad=ratio_pad,
+                confidence=confidence,
+                class_filter=class_filter,
+            )
+            for prediction, (orig_shape, ratio_pad) in zip(output, contexts, strict=True)
+        ]
 
     def _decode(
         self,
@@ -158,41 +259,29 @@ class OnnxPoseModel:
         confidence: float,
         class_filter: str | int | None = None,
     ) -> list[list[PoseDetection]]:
-        prepared: list[np.ndarray] = []
-        contexts: list[tuple[tuple[int, int], tuple[tuple[float, float], tuple[int, int]]]] = []
-        input_shape: tuple[int, int] | None = None
-        for frame in frames:
-            orig_shape = frame.shape[:2]
-            letterboxed, ratio, pad = _letterbox(
-                frame,
-                (image_size, image_size),
-                stride=self.stride,
-            )
-            if input_shape is None:
-                input_shape = letterboxed.shape[:2]
-            elif letterboxed.shape[:2] != input_shape:
-                raise ValueError("batch frames must produce the same ONNX input shape")
-            prepared.append(np.transpose(letterboxed[:, :, ::-1], (2, 0, 1)))
-            contexts.append((orig_shape, (ratio, pad)))
-        if not prepared or input_shape is None:
-            return []
+        if self.input_spec.batch_fixed == 1 and len(frames) > 1:
+            results: list[list[PoseDetection]] = []
+            for frame in frames:
+                results.extend(
+                    self.predict_batch(
+                        (frame,),
+                        image_size=image_size,
+                        confidence=confidence,
+                        class_filter=class_filter,
+                    )
+                )
+            return results
 
-        blob = np.ascontiguousarray(np.stack(prepared), dtype=np.float32)
-        blob /= 255.0
-        output = self.session.run(self.output_names, {self.input_name: blob})[0]
-        if output.ndim != 3 or output.shape[0] != len(frames):
+        prepared, contexts, input_shape = self._prepare_frames(frames, image_size=image_size)
+        if not prepared:
             return [[] for _ in frames]
-        return [
-            self._decode(
-                prediction,
-                input_shape=input_shape,
-                orig_shape=orig_shape,
-                ratio_pad=ratio_pad,
-                confidence=confidence,
-                class_filter=class_filter,
-            )
-            for prediction, (orig_shape, ratio_pad) in zip(output, contexts, strict=True)
-        ]
+        return self._run_prepared_batch(
+            prepared,
+            contexts,
+            input_shape,
+            confidence=confidence,
+            class_filter=class_filter,
+        )
 
     def predict(
         self,

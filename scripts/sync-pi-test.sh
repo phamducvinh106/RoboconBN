@@ -34,6 +34,7 @@ echo "==> tests"
 python3 -m unittest block_detected_for_pi.test_cdc -q
 python3 -m unittest block_detected_for_pi.test_payload -q
 python3 -m unittest block_detected_for_pi.test_monitor -q
+python3 -m unittest block_detected_for_pi.test_model_benchmark -q
 
 echo "==> vision smoke (headless, 10 frames)"
 python3 main.py --no-cdc --no-ui --frames 10

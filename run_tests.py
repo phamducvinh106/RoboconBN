@@ -153,6 +153,12 @@ SUITES: tuple[Suite, ...] = (
         "CLI monitor snapshot thresholds and render smoke",
         python_module="block_detected_for_pi.test_monitor",
     ),
+    Suite(
+        "python-model-benchmark",
+        "python",
+        "Model benchmark metrics, gates, and ONNX compatibility",
+        python_module="block_detected_for_pi.test_model_benchmark",
+    ),
 )
 
 

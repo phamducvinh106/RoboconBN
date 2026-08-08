@@ -89,9 +89,6 @@ def resolve_model(path: str) -> Path:
     fallback = repo_root / path
     if fallback.is_file():
         return fallback
-    legacy = repo_root / "block_detected_for_pi" / "models" / "pose11-fp16.onnx"
-    if legacy.is_file():
-        return legacy
     raise FileNotFoundError(f"model not found: {path}")
 
 
