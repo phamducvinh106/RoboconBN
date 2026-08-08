@@ -159,6 +159,12 @@ SUITES: tuple[Suite, ...] = (
         "Model benchmark metrics, gates, and ONNX compatibility",
         python_module="block_detected_for_pi.test_model_benchmark",
     ),
+    Suite(
+        "python-stream",
+        "python",
+        "MJPEG overlay and stream server smoke",
+        python_module="block_detected_for_pi.test_stream",
+    ),
 )
 
 

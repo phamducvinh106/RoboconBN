@@ -12,6 +12,15 @@ from block_detected_for_pi.config import BlockCodeConfig
 from block_detected_for_pi.cdc_publisher import CdcPublisher
 from block_detected_for_pi.core import TargetingCore
 from block_detected_for_pi.frame_state import RegisterFile
+from block_detected_for_pi.mjpeg_stream import (
+    ENABLE_STREAM,
+    JPEG_QUALITY,
+    STREAM_HEIGHT,
+    STREAM_PORT,
+    STREAM_WIDTH,
+    MjpegStreamer,
+)
+from block_detected_for_pi.overlay import annotate_frame, compose_stream_frame
 from block_detected_for_pi.payload import build_registers, frame_from_targets, unpack_payload
 from block_detected_for_pi.types import Target
 from cli.monitor import CliMonitor
@@ -55,6 +64,17 @@ def build_parser() -> argparse.ArgumentParser:
                              help="headless periodic status JSON on stderr; disables dashboard")
     parser.add_argument("--no-cdc", action="store_true", help="skip USB CDC publish")
     parser.add_argument("--cdc-device", default=DEFAULT_CDC_DEVICE)
+    parser.add_argument("--stream", action=argparse.BooleanOptionalAction, default=ENABLE_STREAM)
+    parser.add_argument("--stream-port", type=int, default=STREAM_PORT)
+    parser.add_argument("--stream-quality", type=int, default=JPEG_QUALITY, help="JPEG quality 1-100")
+    parser.add_argument("--stream-width", type=int, default=STREAM_WIDTH, help="stream frame width; 0 keeps source")
+    parser.add_argument("--stream-height", type=int, default=STREAM_HEIGHT, help="stream frame height; 0 keeps source")
+    parser.add_argument(
+        "--stream-source",
+        choices=("left", "right", "both"),
+        default="both",
+        help="camera preview source for MJPEG",
+    )
     return parser
 
 
@@ -204,8 +224,12 @@ def run(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     if (args.frames < 0 or args.size < 32 or not 0 <= args.conf <= 1 or args.threads < 1
-            or args.camera_width < 1 or args.camera_height < 1 or args.camera_fps <= 0):
-        parser.error("frames >= 0, size >= 32, conf in [0, 1], threads/camera dimensions/fps > 0")
+            or args.camera_width < 1 or args.camera_height < 1 or args.camera_fps <= 0
+            or not 1 <= args.stream_quality <= 100 or args.stream_port < 1):
+        parser.error(
+            "frames >= 0, size >= 32, conf in [0, 1], threads/camera dimensions/fps > 0, "
+            "stream_quality in [1, 100], stream_port > 0"
+        )
 
     use_dashboard = not args.json and not args.no_ui
     model_path = resolve_model(args.model)
@@ -248,6 +272,26 @@ def run(argv: list[str] | None = None) -> int:
     if use_dashboard:
         monitor = CliMonitor(verbose=args.verbose)
         monitor.start()
+
+    streamer: MjpegStreamer | None = None
+    if args.stream:
+        streamer = MjpegStreamer(
+            port=args.stream_port,
+            jpeg_quality=args.stream_quality,
+            stream_width=args.stream_width,
+            stream_height=args.stream_height,
+        )
+        streamer.start()
+        if args.no_ui:
+            print(
+                json.dumps(
+                    {
+                        "stream": True,
+                        "stream_url": f"http://<pi_ip>:{args.stream_port}{streamer.video_url_path}",
+                    }
+                ),
+                file=sys.stderr,
+            )
 
     start_time = time.monotonic()
     last_error = ""
@@ -363,8 +407,18 @@ def run(argv: list[str] | None = None) -> int:
                     )
                     monitor.update(snapshot)
 
+                if streamer is not None:
+                    preview_fps = pair_fps if pair_fps > 0 else 0.0
+                    left_view = annotate_frame(left_frame, left, label="LEFT", fps=preview_fps)
+                    right_view = annotate_frame(right_frame, right, label="RIGHT", fps=preview_fps)
+                    streamer.publish(
+                        compose_stream_frame(left_view, right_view, mode=args.stream_source)
+                    )
+
                 count += 1
     finally:
+        if streamer is not None:
+            streamer.close()
         if monitor is not None:
             monitor.close()
         left_cam.release()
