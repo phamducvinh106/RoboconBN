@@ -40,7 +40,7 @@ public final class LiftingHardwareTestOpMode extends LinearOpMode {
         EndstopManager endstop = new EndstopManager(() -> !robot.endstop1.getState());
         StepperElevatorManager elevator = new StepperElevatorManager(
                 channel(step), channel(dir), endstop,
-                config.stepHighNs, config.stepLowNs, config.lift2Steps);
+                config.stepHighNs, config.stepLowNs, config.lift2Steps, config.stepperDirInverted);
         ForkServoManager fork = new ForkServoManager(
                 servo(robot.servoLeft), servo(robot.servoRight),
                 config.placeLeft, config.placeRight, config.holdLeft, config.holdRight);
@@ -59,7 +59,7 @@ public final class LiftingHardwareTestOpMode extends LinearOpMode {
 
         telemetry.addLine("LOW POWER HARDWARE COMMUNICATION TEST");
         telemetry.addLine("A=home  B=READY1  X=PLACE  Y=HOLD  Dpad=IR/pose  LB/RB=cameras");
-        telemetry.addLine("Pi5 USB CDC camera metadata (left=centering, right=classification)");
+        telemetry.addLine("Pi5 USB CDC dual-channel block classification (left + right)");
         telemetry.update();
         waitForStart();
         boolean lastA = false, lastB = false, lastX = false, lastY = false;
@@ -84,10 +84,12 @@ public final class LiftingHardwareTestOpMode extends LinearOpMode {
                 telemetry.addData("IR", "left=%s right=%s both=%s polarity=active-low", ir.leftActive(), ir.rightActive(), ir.bothActive());
                 telemetry.addData("pose", "valid=%s x=%.2f y=%.2f heading=%.2f", reading.valid, reading.xCm, reading.yCm, reading.headingDeg);
                 telemetry.addData("release/backout", "released=%s x=%.2f y=%.2f", release.released(), release.reading().xCm, release.reading().yCm);
-                telemetry.addData("pi-left", "valid=%s fresh=%s dx=%.1f type=%s hb=%d",
-                        left.valid, cameras.movementAuthorized(CameraChannel.WEBCAM1, now), left.dxPx, left.blockType, left.heartbeat);
+                telemetry.addData("pi-left", "valid=%s fresh=%s type=%s hb=%d",
+                        left.valid, cameras.movementAuthorized(CameraChannel.WEBCAM1, now),
+                        left.blockType, left.heartbeat);
                 telemetry.addData("pi-right", "valid=%s fresh=%s type=%s hb=%d",
-                        right.valid, cameras.movementAuthorized(CameraChannel.WEBCAM2, now), right.blockType, right.heartbeat);
+                        right.valid, cameras.movementAuthorized(CameraChannel.WEBCAM2, now),
+                        right.blockType, right.heartbeat);
                 telemetry.addData("config", "version=%d fingerprint=%s timing=%d/%d ns", config.version, config.fingerprint, config.stepHighNs, config.stepLowNs);
                 telemetry.update();
                 idle();

@@ -22,16 +22,18 @@ public final class FieldBlueConfig {
     public final LiftingSequenceConfig.Pose placeAtFactory;
     public final LiftingSequenceConfig.Pose shelfApproach;
     public final LiftingSequenceConfig.Pose retreat;
+    public final LiftingSequenceConfig.Pose[] shelfFacs;
     public final Slot[] factorySlots;
 
     FieldBlueConfig(int version, boolean calibrated, LiftingSequenceConfig.Pose placeAtFactory,
                     LiftingSequenceConfig.Pose shelfApproach, LiftingSequenceConfig.Pose retreat,
-                    Slot[] factorySlots) {
+                    LiftingSequenceConfig.Pose[] shelfFacs, Slot[] factorySlots) {
         this.version = version;
         this.calibrated = calibrated;
         this.placeAtFactory = placeAtFactory;
         this.shelfApproach = shelfApproach;
         this.retreat = retreat;
+        this.shelfFacs = shelfFacs;
         this.factorySlots = factorySlots;
     }
 

@@ -152,6 +152,17 @@ public final class MecanumDriveTest {
         check("goto still powered", drive.getLastFlPower() != 0);
     }
 
+    static void testManualDrivePersistsThroughUpdate() {
+        MecanumDrive drive = MecanumDrive.forTest(new FakeOdo());
+        drive.driveRobotCentric(0.10, 0, 0);
+        drive.update();
+        checkEq("manual approach power", drive.getLastFlPower(), 0.10, 1e-9);
+        check("manual state", drive.getState() == MecanumDrive.DriveState.MANUAL);
+        drive.stop();
+        drive.update();
+        checkEq("stop clears manual", drive.getLastFlPower(), 0, 1e-9);
+    }
+
     public static void main(String[] args) throws InterruptedException {
         System.out.println("MecanumDrive offline tests");
         passed = failed = 0;
@@ -168,6 +179,7 @@ public final class MecanumDriveTest {
         testFieldCentricStrafeRight();
         testGoToConverge();
         testTimeout();
+        testManualDrivePersistsThroughUpdate();
         System.out.printf("%nRESULT: %d passed, %d failed%n", passed, failed);
         if (failed > 0) System.exit(1);
     }

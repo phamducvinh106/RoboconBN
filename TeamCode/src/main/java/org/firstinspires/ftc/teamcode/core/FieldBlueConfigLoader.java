@@ -7,6 +7,9 @@ public final class FieldBlueConfigLoader {
     private static final Pattern POINT = Pattern.compile(
             "\\\"(placeAtFactory|shelfApproach|retreat)\\\"\\s*:\\s*\\{\\s*\\\"x\\\"\\s*:\\s*(-?[0-9.]+)"
                     + "\\s*,\\s*\\\"y\\\"\\s*:\\s*(-?[0-9.]+)\\s*,\\s*\\\"heading\\\"\\s*:\\s*(-?[0-9.]+)\\s*\\}");
+    private static final Pattern SHELF_FAC = Pattern.compile(
+            "\\\"(fac1|fac2|fac3)\\\"\\s*:\\s*\\{\\s*\\\"x\\\"\\s*:\\s*(-?[0-9.]+)"
+                    + "\\s*,\\s*\\\"y\\\"\\s*:\\s*(-?[0-9.]+)\\s*,\\s*\\\"heading\\\"\\s*:\\s*(-?[0-9.]+)\\s*\\}");
     private static final Pattern SLOT = Pattern.compile(
             "\\\"near\\\"\\s*:\\s*\\{\\s*\\\"x\\\"\\s*:\\s*(-?[0-9.]+)\\s*,\\s*\\\"y\\\"\\s*:\\s*(-?[0-9.]+)"
                     + "\\s*,\\s*\\\"heading\\\"\\s*:\\s*(-?[0-9.]+)\\s*\\}\\s*,\\s*\\\"placement\\\"\\s*:\\s*\\{"
@@ -37,6 +40,16 @@ public final class FieldBlueConfigLoader {
         if (placeAtFactory == null || shelfApproach == null || retreat == null) {
             throw new IllegalArgumentException("missing field points");
         }
+        LiftingSequenceConfig.Pose[] shelfFacs = new LiftingSequenceConfig.Pose[3];
+        Matcher shelfMatcher = SHELF_FAC.matcher(json);
+        while (shelfMatcher.find()) {
+            int idx = Integer.parseInt(shelfMatcher.group(1).substring(3)) - 1;
+            if (idx < 0 || idx >= shelfFacs.length) throw new IllegalArgumentException("invalid shelf id");
+            shelfFacs[idx] = pose(shelfMatcher, 2);
+        }
+        for (int i = 0; i < shelfFacs.length; i++) {
+            if (shelfFacs[i] == null) throw new IllegalArgumentException("missing shelf fac" + (i + 1));
+        }
         FieldBlueConfig.Slot[] slots = new FieldBlueConfig.Slot[4];
         Matcher slotMatcher = SLOT.matcher(json);
         int count = 0;
@@ -56,7 +69,7 @@ public final class FieldBlueConfigLoader {
         Matcher calibratedMatcher = Pattern.compile("\"calibrated\"\\s*:\\s*(true|false)").matcher(json);
         if (!calibratedMatcher.find()) throw new IllegalArgumentException("missing calibrated flag");
         boolean calibrated = Boolean.parseBoolean(calibratedMatcher.group(1));
-        return new FieldBlueConfig(1, calibrated, placeAtFactory, shelfApproach, retreat, slots);
+        return new FieldBlueConfig(1, calibrated, placeAtFactory, shelfApproach, retreat, shelfFacs, slots);
     }
 
     private static LiftingSequenceConfig.Pose pose(Matcher matcher, int from) {

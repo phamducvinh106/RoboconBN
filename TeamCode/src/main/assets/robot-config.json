@@ -1,10 +1,10 @@
 {
   "version": 1,
   "fork": {
-    "placeLeft": 0.25,
-    "placeRight": 0.75,
-    "holdLeft": 0.50,
-    "holdRight": 0.50
+    "placeLeft": 0.05,
+    "placeRight": 0,
+    "holdLeft": 0.45,
+    "holdRight": 0.45
   },
   "elevator": {
     "stepHighNs": 1,
@@ -14,7 +14,7 @@
     "lift1Steps": 1781,
     "ready2Steps": 4688,
     "lift2Steps": 5625,
-    "elevatorTimeoutNs": 8000000000
+    "stepperDirInverted": true
   },
   "sensors": {
     "endstopActiveLow": true,
@@ -35,7 +35,6 @@
     "noProgressCm": 0.1
   },
   "sequence": {
-    "stateTimeoutNs": 10000000000,
     "maxRetries": 2,
     "settleCycles": 3,
     "totalCycles": 6

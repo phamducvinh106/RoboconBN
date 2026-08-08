@@ -25,6 +25,7 @@ public final class LiftingSequenceStateMachine {
         void setFork(LiftingSequenceConfig.ForkPose pose);
         void drive(double forward, double strafe);
         void stopDrive();
+        void resetNavigation();
         void markBackOutAnchor();
         double backOutDistanceCm();
         PoseReading pose();
@@ -86,9 +87,19 @@ public final class LiftingSequenceStateMachine {
     private int level = 1;
     private int completedCycles;
     private int retries;
+    private int settleCount;
+    private double progressAnchorX;
+    private double progressAnchorY;
+    private long progressCheckNs;
+    private LiftingSequenceConfig.Pose lastArrivalTarget;
     private ShelfPose shelfPose;
     private String leftType = "01";
     private String rightType = "02";
+
+    private static final long HOMING_TIMEOUT_NS = 15_000_000_000L;
+    private static final long ELEVATOR_TIMEOUT_NS = 20_000_000_000L;
+    private static final long NAV_TIMEOUT_NS = 30_000_000_000L;
+    private static final long PROGRESS_WINDOW_NS = 3_000_000_000L;
 
     public LiftingSequenceStateMachine(Clock clock, Actuators actuators) {
         this(clock, actuators, null, null);
@@ -156,6 +167,10 @@ public final class LiftingSequenceStateMachine {
         return retries;
     }
 
+    public int getSettleCount() {
+        return settleCount;
+    }
+
     public ShelfPose getShelfPose() {
         return shelfPose;
     }
@@ -180,41 +195,47 @@ public final class LiftingSequenceStateMachine {
             safeStop(FailureCode.STOP_REQUESTED);
             return;
         }
-        if (stateTimedOut(now)) {
-            safeStop(FailureCode.NO_PROGRESS);
-            return;
-        }
         switch (state) {
             case START:
                 transition(State.HOMING);
                 break;
             case HOMING:
-                if (actuators.home()) transition(State.SET_PLACE);
+                if (actuators.home()) {
+                    transition(State.SET_PLACE);
+                } else if (elapsedNs() >= HOMING_TIMEOUT_NS) {
+                    handleActuatorTimeout();
+                }
                 break;
             case SET_PLACE:
                 actuators.setFork(LiftingSequenceConfig.ForkPose.PLACE);
                 transition(State.PLACE_AT_FACTORY);
                 break;
             case PLACE_AT_FACTORY:
-                if (arrival(placeAtFactoryPose(), now)) transition(State.MOVE_TO_SHELF);
+                if (arrivalSettled(placeAtFactoryPose(), now)) transition(State.MOVE_TO_SHELF);
                 break;
             case MOVE_TO_SHELF:
-                if (arrival(shelfApproachPose(), now)) transition(State.SELECT_LEVEL);
+                if (arrivalSettled(currentShelfPose(), now)) transition(State.SELECT_LEVEL);
                 break;
             case SELECT_LEVEL:
                 transition(level == 1 ? State.READY1 : State.READY2);
                 break;
             case READY1:
-                if (actuators.elevatorAt(LiftingSequenceConfig.ElevatorTarget.READY1)) transition(State.SCAN_RIGHT);
+                if (actuators.elevatorAt(LiftingSequenceConfig.ElevatorTarget.READY1)) {
+                    transition(State.SCAN_RIGHT);
+                } else if (elapsedNs() >= ELEVATOR_TIMEOUT_NS) {
+                    handleActuatorTimeout();
+                }
                 break;
             case READY2:
-                if (actuators.elevatorAt(LiftingSequenceConfig.ElevatorTarget.READY2)) transition(State.SCAN_RIGHT);
+                if (actuators.elevatorAt(LiftingSequenceConfig.ElevatorTarget.READY2)) {
+                    transition(State.SCAN_RIGHT);
+                } else if (elapsedNs() >= ELEVATOR_TIMEOUT_NS) {
+                    handleActuatorTimeout();
+                }
                 break;
             case SCAN_RIGHT:
-                if (dualScanReady(now)) {
-                    setBlockTypes(camera.leftBlockType(), camera.rightBlockType());
-                    transition(State.APPROACH_IR_SLOW);
-                }
+                applyScanTypes(now);
+                transition(State.APPROACH_IR_SLOW);
                 break;
             case APPROACH_IR_SLOW:
                 if (leftIr && rightIr) {
@@ -244,22 +265,26 @@ public final class LiftingSequenceStateMachine {
             case LIFT1:
                 if (actuators.elevatorAt(LiftingSequenceConfig.ElevatorTarget.LIFT1)) {
                     transition(State.BACK_OUT_FROM_SHELF);
+                } else if (elapsedNs() >= ELEVATOR_TIMEOUT_NS) {
+                    handleActuatorTimeout();
                 }
                 break;
             case LIFT2:
                 if (actuators.elevatorAt(LiftingSequenceConfig.ElevatorTarget.LIFT2)) {
                     transition(State.BACK_OUT_FROM_SHELF);
+                } else if (elapsedNs() >= ELEVATOR_TIMEOUT_NS) {
+                    handleActuatorTimeout();
                 }
                 break;
             case BACK_OUT_FROM_SHELF:
-                if (arrival(retreatPose(), now)) transition(State.HOLD);
+                if (arrivalSettled(shelfBackOutPose(), now)) transition(State.HOLD);
                 break;
             case HOLD:
                 actuators.setFork(LiftingSequenceConfig.ForkPose.HOLD);
                 transition(State.MOVE_NEAR_FACTORY_LEFT);
                 break;
             case MOVE_NEAR_FACTORY_LEFT:
-                if (arrival(factory(leftType).near, now)) transition(State.PLACE_LEFT);
+                if (arrivalSettled(factory(leftType).near, now)) transition(State.PLACE_LEFT);
                 break;
             case PLACE_LEFT:
                 actuators.setFork(LiftingSequenceConfig.ForkPose.PLACE);
@@ -268,19 +293,24 @@ public final class LiftingSequenceStateMachine {
             case READY1_LEFT:
                 if (actuators.elevatorAt(LiftingSequenceConfig.ElevatorTarget.READY1)) {
                     transition(State.MOVE_TO_PLACEMENT_LEFT);
+                } else if (elapsedNs() >= ELEVATOR_TIMEOUT_NS) {
+                    handleActuatorTimeout();
                 }
                 break;
             case MOVE_TO_PLACEMENT_LEFT:
-                if (arrival(factory(leftType).placement, now)) transition(State.HOME_LEFT);
+                if (arrivalSettled(factory(leftType).placement, now)) transition(State.HOME_LEFT);
                 break;
             case HOME_LEFT:
                 if (actuators.home()) {
                     actuators.markBackOutAnchor();
                     transition(State.BACK_OUT_AFTER_LEFT_RELEASE_20CM);
+                } else if (elapsedNs() >= HOMING_TIMEOUT_NS) {
+                    handleActuatorTimeout();
                 }
                 break;
             case BACK_OUT_AFTER_LEFT_RELEASE_20CM:
-                if (actuators.backOutDistanceCm() >= backOutCm() && arrival(retreatPose(), now)) {
+                if (arrivalSettled(retreatPose(), now)
+                        && actuators.backOutDistanceCm() >= backOutCm()) {
                     transition(State.RIGHT_RE_LIFT);
                 }
                 break;
@@ -289,10 +319,12 @@ public final class LiftingSequenceStateMachine {
                         ? LiftingSequenceConfig.ElevatorTarget.LIFT1
                         : LiftingSequenceConfig.ElevatorTarget.LIFT2)) {
                     transition(State.MOVE_NEAR_FACTORY_RIGHT);
+                } else if (elapsedNs() >= ELEVATOR_TIMEOUT_NS) {
+                    handleActuatorTimeout();
                 }
                 break;
             case MOVE_NEAR_FACTORY_RIGHT:
-                if (arrival(factory(rightType).near, now)) transition(State.PLACE_RIGHT);
+                if (arrivalSettled(factory(rightType).near, now)) transition(State.PLACE_RIGHT);
                 break;
             case PLACE_RIGHT:
                 actuators.setFork(LiftingSequenceConfig.ForkPose.PLACE);
@@ -301,19 +333,24 @@ public final class LiftingSequenceStateMachine {
             case READY1_RIGHT:
                 if (actuators.elevatorAt(LiftingSequenceConfig.ElevatorTarget.READY1)) {
                     transition(State.MOVE_TO_PLACEMENT_RIGHT);
+                } else if (elapsedNs() >= ELEVATOR_TIMEOUT_NS) {
+                    handleActuatorTimeout();
                 }
                 break;
             case MOVE_TO_PLACEMENT_RIGHT:
-                if (arrival(factory(rightType).placement, now)) transition(State.HOME_RIGHT);
+                if (arrivalSettled(factory(rightType).placement, now)) transition(State.HOME_RIGHT);
                 break;
             case HOME_RIGHT:
                 if (actuators.home()) {
                     actuators.markBackOutAnchor();
                     transition(State.BACK_OUT_AFTER_RIGHT_RELEASE_20CM);
+                } else if (elapsedNs() >= HOMING_TIMEOUT_NS) {
+                    handleActuatorTimeout();
                 }
                 break;
             case BACK_OUT_AFTER_RIGHT_RELEASE_20CM:
-                if (actuators.backOutDistanceCm() >= backOutCm() && arrival(retreatPose(), now)) {
+                if (arrivalSettled(retreatPose(), now)
+                        && actuators.backOutDistanceCm() >= backOutCm()) {
                     transition(State.CYCLE_COMPLETE);
                 }
                 break;
@@ -334,8 +371,14 @@ public final class LiftingSequenceStateMachine {
         }
     }
 
-    private LiftingSequenceConfig.Pose shelfApproachPose() {
-        return config == null ? new LiftingSequenceConfig.Pose(0, 0, 0) : config.shelfApproach;
+    private LiftingSequenceConfig.Pose currentShelfPose() {
+        return config == null ? new LiftingSequenceConfig.Pose(0, 0, 0) : config.shelfFor(shelf);
+    }
+
+    private LiftingSequenceConfig.Pose shelfBackOutPose() {
+        if (shelfPose == null) return retreatPose();
+        return new LiftingSequenceConfig.Pose(
+                shelfPose.x + backOutCm(), shelfPose.y, shelfPose.heading);
     }
 
     private LiftingSequenceConfig.Pose retreatPose() {
@@ -359,15 +402,37 @@ public final class LiftingSequenceStateMachine {
     }
 
     private double approachSpeed() {
-        return config == null ? 0.08 : config.approachSpeed;
+        return config == null ? 0.30 : config.approachSpeed;
     }
 
-    private boolean dualScanReady(long nowNs) {
-        if (camera == null) return false;
-        String left = camera.leftBlockType();
-        String right = camera.rightBlockType();
-        return camera.leftValid() && camera.leftFresh(nowNs) && camera.rightValid()
-                && camera.rightFresh(nowNs) && knownFactory(left) && knownFactory(right);
+    private void applyScanTypes(long nowNs) {
+        String left = "01";
+        String right = "02";
+        if (camera != null) {
+            String detectedLeft = resolveBlockType(
+                    camera.leftValid(), camera.leftFresh(nowNs), camera.leftBlockType());
+            String detectedRight = resolveBlockType(
+                    camera.rightValid(), camera.rightFresh(nowNs), camera.rightBlockType());
+            if (detectedLeft != null) left = detectedLeft;
+            if (detectedRight != null) right = detectedRight;
+        }
+        setBlockTypes(left, right);
+    }
+
+    private String resolveBlockType(boolean valid, boolean fresh, String rawType) {
+        if (!valid || !fresh) return null;
+        String type = normalizeBlockType(rawType);
+        return knownFactory(type) ? type : null;
+    }
+
+    private String normalizeBlockType(String type) {
+        if (type == null) return null;
+        String trimmed = type.trim();
+        if (trimmed.isEmpty()) return null;
+        if (trimmed.length() == 1 && Character.isDigit(trimmed.charAt(0))) {
+            return "0" + trimmed;
+        }
+        return trimmed;
     }
 
     private boolean knownFactory(String type) {
@@ -375,43 +440,108 @@ public final class LiftingSequenceStateMachine {
         return config == null || config.factories.containsKey(type);
     }
 
-    private boolean stateTimedOut(long nowNs) {
-        long limit = stateTimeoutLimitNs();
-        return limit > 0 && nowNs - stateStartedNs > limit;
-    }
-
-    private long stateTimeoutLimitNs() {
-        if (config == null) return LiftingSequenceConfig.STATE_TIMEOUT_NS;
-        switch (state) {
-            case HOMING:
-            case READY1:
-            case READY2:
-            case LIFT1:
-            case LIFT2:
-            case READY1_LEFT:
-            case READY1_RIGHT:
-            case HOME_LEFT:
-            case HOME_RIGHT:
-            case RIGHT_RE_LIFT:
-                return config.elevatorTimeoutNs;
-            default:
-                return config.stateTimeoutNs;
-        }
-    }
-
-    private boolean arrival(LiftingSequenceConfig.Pose target, long nowNs) {
+    private boolean arrivalSettled(LiftingSequenceConfig.Pose target, long nowNs) {
         PoseReading pose = actuators.pose();
         if (pose == null || !pose.valid) {
             safeStop(FailureCode.ENCODER_INVALID);
             return false;
         }
-        return actuators.arrival(target, nowNs);
+        if (!poseFresh(pose, nowNs)) {
+            safeStop(FailureCode.ENCODER_INVALID);
+            return false;
+        }
+        if (!samePose(lastArrivalTarget, target)) {
+            settleCount = 0;
+            lastArrivalTarget = target;
+            progressAnchorX = pose.x;
+            progressAnchorY = pose.y;
+            progressCheckNs = nowNs;
+        }
+        if (elapsedNs() >= NAV_TIMEOUT_NS) {
+            handleNavigationTimeout();
+            return false;
+        }
+        if (actuators.arrival(target, nowNs)) {
+            settleCount++;
+            return settleCount >= settleCycles();
+        }
+        settleCount = 0;
+        checkNavigationProgress(pose, nowNs);
+        return false;
+    }
+
+    private void checkNavigationProgress(PoseReading pose, long nowNs) {
+        double moved = Math.hypot(pose.x - progressAnchorX, pose.y - progressAnchorY);
+        if (moved >= noProgressCm()) {
+            progressAnchorX = pose.x;
+            progressAnchorY = pose.y;
+            progressCheckNs = nowNs;
+            return;
+        }
+        if (nowNs - progressCheckNs < PROGRESS_WINDOW_NS) return;
+        if (retries < maxRetries()) {
+            actuators.resetNavigation();
+            retries++;
+            settleCount = 0;
+            progressCheckNs = nowNs;
+            return;
+        }
+        safeStop(FailureCode.NO_PROGRESS);
+    }
+
+    private void handleNavigationTimeout() {
+        if (retries < maxRetries()) {
+            actuators.resetNavigation();
+            retries++;
+            settleCount = 0;
+            stateStartedNs = clock.nowNs();
+            return;
+        }
+        safeStop(FailureCode.NO_PROGRESS);
+    }
+
+    private void handleActuatorTimeout() {
+        if (retries < maxRetries()) {
+            retries++;
+            stateStartedNs = clock.nowNs();
+            return;
+        }
+        safeStop(FailureCode.NO_PROGRESS);
+    }
+
+    private boolean poseFresh(PoseReading pose, long nowNs) {
+        if (pose.timestampNs == 0) return true;
+        long freshnessNs = config == null
+                ? 250_000_000L
+                : (long) config.encoderFreshnessNs;
+        return nowNs - pose.timestampNs <= freshnessNs;
+    }
+
+    private int settleCycles() {
+        return config == null ? 3 : config.settleCycles;
+    }
+
+    private int maxRetries() {
+        return config == null ? LiftingSequenceConfig.MAX_RETRIES : config.maxRetries;
+    }
+
+    private double noProgressCm() {
+        return config == null ? 0.1 : config.noProgressCm;
+    }
+
+    private static boolean samePose(LiftingSequenceConfig.Pose a, LiftingSequenceConfig.Pose b) {
+        if (a == null || b == null) return a == b;
+        return Double.compare(a.x, b.x) == 0
+                && Double.compare(a.y, b.y) == 0
+                && Double.compare(a.heading, b.heading) == 0;
     }
 
     private void transition(State next) {
         state = next;
         stateStartedNs = clock.nowNs();
         retries = 0;
+        settleCount = 0;
+        lastArrivalTarget = null;
         bothIrSinceNs = 0;
     }
 

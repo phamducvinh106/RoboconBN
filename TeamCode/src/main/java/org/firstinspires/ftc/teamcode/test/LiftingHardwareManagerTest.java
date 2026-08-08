@@ -33,6 +33,8 @@ public final class LiftingHardwareManagerTest {
         S end = new S();
         B step = new B(), dir = new B();
         StepperElevatorManager lift = new StepperElevatorManager(step, dir, new EndstopManager(end), 10, 10, 20);
+        end.value = false;
+        check("must home before done", !lift.moveToward(0, 0));
         end.value = true;
         check("home", lift.moveToward(0, 0));
         end.value = false;
@@ -43,6 +45,15 @@ public final class LiftingHardwareManagerTest {
         check("pulse", lift.moveToward(1, 20));
         check("position", lift.position() == 1);
         check("step low before dir", step.log.indexOf("01") >= 0);
+
+        B stepInv = new B(), dirInv = new B();
+        StepperElevatorManager inverted = new StepperElevatorManager(
+                stepInv, dirInv, new EndstopManager(end), 10, 10, 20, true);
+        end.value = true;
+        inverted.moveToward(0, 0);
+        end.value = false;
+        inverted.moveToward(1, 0);
+        check("inverted up dir low", !dirInv.value);
 
         S left = new S(), right = new S();
         IrSensorManager ir = new IrSensorManager(left, right);

@@ -11,10 +11,10 @@ public final class LiftingSequenceConfigLoader {
     private static final Pattern NUMBER = Pattern.compile(
             "\\\"([A-Za-z0-9_]+)\\\"\\s*:\\s*(-?(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:[eE][+-]?\\d+)?)");
     private static final Pattern BOOLEAN = Pattern.compile(
-            "\\\"(endstopActiveLow|irActiveLow)\\\"\\s*:\\s*(true|false)");
+            "\\\"(endstopActiveLow|irActiveLow|stepperDirInverted)\\\"\\s*:\\s*(true|false)");
     private static final String[] REQUIRED = {
             "placeLeft", "placeRight", "holdLeft", "holdRight",
-            "stepHighNs", "stepLowNs", "irDebounceNs", "sensorStaleNs", "elevatorTimeoutNs", "stateTimeoutNs",
+            "stepHighNs", "stepLowNs", "irDebounceNs", "sensorStaleNs",
             "homeSteps", "ready1Steps", "lift1Steps", "ready2Steps", "lift2Steps",
             "maxRetries", "settleCycles", "totalCycles",
             "releaseBackOutCm", "positionToleranceCm", "headingToleranceDeg", "encoderFreshnessNs", "noProgressCm",
@@ -50,7 +50,7 @@ public final class LiftingSequenceConfigLoader {
         while (booleanMatcher.find()) {
             booleans.put(booleanMatcher.group(1), Boolean.valueOf(booleanMatcher.group(2)));
         }
-        if (booleans.size() != 2) throw new IllegalArgumentException("missing sensor polarity");
+        if (booleans.size() != 3) throw new IllegalArgumentException("missing sensor polarity");
 
         range(numbers, "placeLeft", 0, 1);
         range(numbers, "placeRight", 0, 1);
@@ -60,8 +60,6 @@ public final class LiftingSequenceConfigLoader {
         range(numbers, "stepLowNs", 1, 1e9);
         range(numbers, "irDebounceNs", 1, 1e12);
         range(numbers, "sensorStaleNs", 1, 1e12);
-        range(numbers, "elevatorTimeoutNs", 1, 1e13);
-        range(numbers, "stateTimeoutNs", 1, 1e13);
         range(numbers, "homeSteps", 0, 0);
         range(numbers, "ready1Steps", 1, 1e6);
         range(numbers, "lift1Steps", 1, 1e6);
@@ -85,6 +83,7 @@ public final class LiftingSequenceConfigLoader {
                 new LiftingSequenceConfig.Pose(0, 0, 0),
                 new LiftingSequenceConfig.Pose(0, 0, 0),
                 new LiftingSequenceConfig.Pose(0, 0, 0),
+                new LiftingSequenceConfig.Pose[0],
                 factories, fingerprint(json));
     }
 

@@ -7,7 +7,6 @@ import java.util.Map;
 public final class LiftingSequenceConfig {
     public static final int SCHEMA_VERSION = 1;
     public static final long IR_DEBOUNCE_NS = 100_000_000L;
-    public static final long STATE_TIMEOUT_NS = 10_000_000_000L;
     public static final int MAX_RETRIES = 2;
     public static final double RELEASE_BACK_OUT_CM = 20.0;
     public static final double POSITION_TOLERANCE_CM = 1.0;
@@ -38,20 +37,21 @@ public final class LiftingSequenceConfig {
 
     public final int version;
     public final double placeLeft, placeRight, holdLeft, holdRight;
-    public final long stepHighNs, stepLowNs, irDebounceNs, sensorStaleNs, elevatorTimeoutNs, stateTimeoutNs;
+    public final long stepHighNs, stepLowNs, irDebounceNs, sensorStaleNs;
     public final int homeSteps, ready1Steps, lift1Steps, ready2Steps, lift2Steps, maxRetries, settleCycles, totalCycles;
     public final double releaseBackOutCm, positionToleranceCm, headingToleranceDeg, encoderFreshnessNs, noProgressCm;
-    public final boolean endstopActiveLow, irActiveLow;
+    public final boolean endstopActiveLow, irActiveLow, stepperDirInverted;
     public final String webcam1Identity, webcam2Identity;
     public final double approachSpeed;
     public final int cameraFrameWidth, cameraFrameHeight;
     public final Pose shelfApproach, retreat, placeAtFactory;
+    public final Pose[] shelfFacs;
     public final String[] blockTypesByCode;
     public final Map<String, Factory> factories;
     public final String fingerprint;
 
     private LiftingSequenceConfig(int version, Map<String, Double> n, Map<String, Boolean> b,
-                                  Pose placeAtFactory, Pose shelfApproach, Pose retreat,
+                                  Pose placeAtFactory, Pose shelfApproach, Pose retreat, Pose[] shelfFacs,
                                   Map<String, Factory> factories, String fingerprint) {
         this.version = version;
         placeLeft = n.get("placeLeft");
@@ -62,8 +62,6 @@ public final class LiftingSequenceConfig {
         stepLowNs = n.get("stepLowNs").longValue();
         irDebounceNs = n.get("irDebounceNs").longValue();
         sensorStaleNs = n.get("sensorStaleNs").longValue();
-        elevatorTimeoutNs = n.get("elevatorTimeoutNs").longValue();
-        stateTimeoutNs = n.get("stateTimeoutNs").longValue();
         homeSteps = n.get("homeSteps").intValue();
         ready1Steps = n.get("ready1Steps").intValue();
         lift1Steps = n.get("lift1Steps").intValue();
@@ -79,6 +77,7 @@ public final class LiftingSequenceConfig {
         noProgressCm = n.get("noProgressCm");
         endstopActiveLow = b.get("endstopActiveLow");
         irActiveLow = b.get("irActiveLow");
+        stepperDirInverted = b.get("stepperDirInverted");
         webcam1Identity = "webcam1";
         webcam2Identity = "webcam2";
         approachSpeed = n.get("approachSpeed");
@@ -87,6 +86,7 @@ public final class LiftingSequenceConfig {
         this.placeAtFactory = placeAtFactory;
         this.shelfApproach = shelfApproach;
         this.retreat = retreat;
+        this.shelfFacs = shelfFacs == null ? new Pose[0] : shelfFacs.clone();
         blockTypesByCode = new String[]{"01", "02", "03", "04"};
         this.factories = Collections.unmodifiableMap(factories);
         this.fingerprint = fingerprint;
@@ -120,15 +120,24 @@ public final class LiftingSequenceConfig {
         if (SCHEMA_VERSION != 1) throw new IllegalStateException("invalid config schema");
     }
 
+    public Pose shelfFor(int shelfNumber) {
+        if (shelfFacs.length == 0) return shelfApproach;
+        int idx = shelfNumber - 1;
+        if (idx < 0 || idx >= shelfFacs.length) {
+            throw new IllegalArgumentException("shelf out of range: " + shelfNumber);
+        }
+        return shelfFacs[idx];
+    }
+
     static LiftingSequenceConfig create(int v, Map<String, Double> n, Map<String, Boolean> b,
-                                        Pose placeAtFactory, Pose shelfApproach, Pose retreat,
+                                        Pose placeAtFactory, Pose shelfApproach, Pose retreat, Pose[] shelfFacs,
                                         Map<String, Factory> f, String fp) {
-        return new LiftingSequenceConfig(v, n, b, placeAtFactory, shelfApproach, retreat, f, fp);
+        return new LiftingSequenceConfig(v, n, b, placeAtFactory, shelfApproach, retreat, shelfFacs, f, fp);
     }
 
     public LiftingSequenceConfig withField(FieldBlueConfig field, Alliance alliance) {
         return create(version, snapshotNumbers(), snapshotBooleans(),
-                field.placeAtFactory, field.shelfApproach, field.retreat,
+                field.placeAtFactory, field.shelfApproach, field.retreat, field.shelfFacs,
                 field.factoriesFor(alliance), fingerprint);
     }
 
@@ -142,8 +151,6 @@ public final class LiftingSequenceConfig {
         n.put("stepLowNs", (double) stepLowNs);
         n.put("irDebounceNs", (double) irDebounceNs);
         n.put("sensorStaleNs", (double) sensorStaleNs);
-        n.put("elevatorTimeoutNs", (double) elevatorTimeoutNs);
-        n.put("stateTimeoutNs", (double) stateTimeoutNs);
         n.put("homeSteps", (double) homeSteps);
         n.put("ready1Steps", (double) ready1Steps);
         n.put("lift1Steps", (double) lift1Steps);
@@ -167,6 +174,7 @@ public final class LiftingSequenceConfig {
         Map<String, Boolean> b = new LinkedHashMap<>();
         b.put("endstopActiveLow", endstopActiveLow);
         b.put("irActiveLow", irActiveLow);
+        b.put("stepperDirInverted", stepperDirInverted);
         return b;
     }
 }

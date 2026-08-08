@@ -27,7 +27,7 @@ public final class MecanumDrive {
     public static final double MAX_ROTATIONAL_POWER = 0.45;
     public static final double DEFAULT_SLEW_PER_LOOP = 0.08;
 
-    public enum DriveState { IDLE, MOVING, HOLDING }
+    public enum DriveState { IDLE, MANUAL, MOVING, HOLDING }
 
     public interface OdometryProvider {
         double getX();
@@ -87,6 +87,9 @@ public final class MecanumDrive {
 
     public void update() {
         switch (state) {
+            case MANUAL:
+                applyRobotFrame(cmdForward, cmdStrafe, cmdRotate);
+                break;
             case MOVING:
             case HOLDING:
                 updatePositionControl();
@@ -116,7 +119,7 @@ public final class MecanumDrive {
     }
 
     public void driveRobotCentric(double forward, double strafe, double rotate) {
-        state = DriveState.IDLE;
+        state = DriveState.MANUAL;
         cmdForward = forward;
         cmdStrafe = strafe;
         cmdRotate = rotate;
@@ -124,7 +127,7 @@ public final class MecanumDrive {
     }
 
     public void driveFieldCentric(double fieldForward, double fieldStrafe, double rotate) {
-        state = DriveState.IDLE;
+        state = DriveState.MANUAL;
         double[] robot = fieldToRobot(fieldForward, fieldStrafe, odometry.getHeadingDeg());
         cmdForward = robot[0];
         cmdStrafe = robot[1];
@@ -139,12 +142,16 @@ public final class MecanumDrive {
     }
 
     public void robotCentric(double forward, double strafe, double rotate) {
-        state = DriveState.IDLE;
+        state = DriveState.MANUAL;
+        cmdForward = forward;
+        cmdStrafe = strafe;
+        cmdRotate = rotate;
         double denominator = Math.max(1.0, Math.abs(forward) + Math.abs(strafe) + Math.abs(rotate));
-        fl.setPower((forward + strafe + rotate) / denominator);
-        fr.setPower((forward - strafe - rotate) / denominator);
-        bl.setPower((forward - strafe + rotate) / denominator);
-        br.setPower((forward + strafe - rotate) / denominator);
+        setMotorPowers(
+                (forward + strafe + rotate) / denominator,
+                (forward - strafe - rotate) / denominator,
+                (forward - strafe + rotate) / denominator,
+                (forward + strafe - rotate) / denominator);
     }
 
     public void stop() {

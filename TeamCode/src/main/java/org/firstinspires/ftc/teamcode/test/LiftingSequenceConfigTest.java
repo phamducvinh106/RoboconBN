@@ -26,9 +26,12 @@ public final class LiftingSequenceConfigTest {
         check("camera width", c.cameraFrameWidth == 640);
         check("camera height", c.cameraFrameHeight == 480);
         check("camera freshness", c.sensorStaleNs == 250000000);
+        check("fork place mirrored", c.placeLeft == c.placeRight);
+        check("fork hold mirrored", c.holdLeft == c.holdRight);
+        check("stepper dir inverted", c.stepperDirInverted);
         rejects("missing", json.replace("\"lift2Steps\": 5625,", ""));
         rejects("wrong version", json.replace("\"version\": 1", "\"version\": 2"));
-        rejects("range", json.replace("\"centerSpeed\": 0.15", "\"centerSpeed\": 2"));
+        rejects("range", json.replace("\"approachSpeed\": 0.1", "\"approachSpeed\": 2"));
         rejects("malformed", json.substring(0, json.lastIndexOf('}')));
         System.out.println("RESULT: "+passed+" passed, 0 failed");
     }

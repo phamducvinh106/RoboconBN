@@ -113,6 +113,7 @@ public final class Localizer {
 
     private double xCm = 0.0;
     private double yCm = 0.0;
+    private double headingOffsetRad = 0.0;
 
     private double lastDeltaHeadingRad = 0.0;
     private double lastParallelDeltaCm = 0.0;
@@ -373,9 +374,33 @@ public final class Localizer {
         reset();
     }
 
+    /** Sets absolute field pose; encoder/IMU baselines sync so subsequent updates stay consistent. */
+    public void setPose(double xCm, double yCm, double headingDeg) {
+        if (!Double.isFinite(xCm) || !Double.isFinite(yCm) || !Double.isFinite(headingDeg)) {
+            throw new IllegalArgumentException("pose must be finite");
+        }
+        this.xCm = xCm;
+        this.yCm = yCm;
+        lastParallelTicks = parallelPod.getCurrentPosition();
+        lastPerpendicularTicks = perpendicularPod.getCurrentPosition();
+        double rawHeadingRad = imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.RADIANS);
+        if (Double.isNaN(rawHeadingRad)) rawHeadingRad = 0.0;
+        headingOffsetRad = Math.toRadians(headingDeg) - HEADING_SIGN * rawHeadingRad;
+        lastHeadingRad = getHeadingRad();
+        lastDeltaHeadingRad = 0.0;
+        lastParallelDeltaCm = 0.0;
+        lastPerpendicularDeltaCm = 0.0;
+        lastForwardLocalCm = 0.0;
+        lastLeftLocalCm = 0.0;
+        accumHeadingRad = 0.0;
+        accumParallelCm = 0.0;
+        accumPerpendicularCm = 0.0;
+    }
+
     public void reset() {
         xCm = 0.0;
         yCm = 0.0;
+        headingOffsetRad = 0.0;
 
         lastParallelTicks =
                 parallelPod.getCurrentPosition();
@@ -404,7 +429,7 @@ public final class Localizer {
             return 0.0;
         }
 
-        return HEADING_SIGN * raw;
+        return angleWrap(HEADING_SIGN * raw + headingOffsetRad);
     }
 
     private double angleWrap(double angle) {

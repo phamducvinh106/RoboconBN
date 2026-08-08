@@ -16,6 +16,8 @@ public final class ServoJoystickTestOpMode extends LinearOpMode {
     public void runOpMode() throws InterruptedException {
         ServoImplEx servoLeft = hardwareMap.get(ServoImplEx.class, "servoLeft");
         ServoImplEx servoRight = hardwareMap.get(ServoImplEx.class, "servoRight");
+        servoLeft.setDirection(Servo.Direction.REVERSE);
+        servoRight.setDirection(Servo.Direction.FORWARD);
         PwmControl.PwmRange pwmRange = new PwmControl.PwmRange(500, 2500);
         servoLeft.setPwmRange(pwmRange);
         servoRight.setPwmRange(pwmRange);

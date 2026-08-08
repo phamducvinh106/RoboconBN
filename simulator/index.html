@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RoboconBN — Gameplay Simulator 2D</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #1a2332;
+      --border: #2d3a4f;
+      --text: #e8edf4;
+      --muted: #8b9cb3;
+      --accent: #3d9eff;
+      --green: #3dd68c;
+      --orange: #f5a623;
+      --red: #ff6b6b;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      padding: 12px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    header h1 { font-size: 1.1rem; font-weight: 600; }
+    header span { color: var(--muted); font-size: 0.85rem; }
+    main {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 300px;
+      gap: 0;
+      min-height: 0;
+    }
+    @media (max-width: 900px) {
+      main { grid-template-columns: 1fr; }
+    }
+    #canvas-wrap {
+      position: relative;
+      background: #0a0e14;
+      min-height: 400px;
+    }
+    canvas { display: block; width: 100%; height: 100%; }
+    aside {
+      background: var(--panel);
+      border-left: 1px solid var(--border);
+      padding: 16px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    @media (max-width: 900px) {
+      aside { border-left: none; border-top: 1px solid var(--border); }
+    }
+    .controls { display: flex; flex-wrap: wrap; gap: 8px; }
+    button {
+      background: var(--border);
+      color: var(--text);
+      border: none;
+      padding: 8px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.85rem;
+    }
+    button:hover { background: #3d4f6a; }
+    button.primary { background: var(--accent); color: #fff; }
+    button.primary:hover { background: #2d8ae6; }
+    label {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+    select, input[type="range"] { width: 100%; }
+    select {
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: 6px 8px;
+      border-radius: 4px;
+    }
+    .stat-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      font-size: 0.8rem;
+    }
+    .stat {
+      background: var(--bg);
+      padding: 8px 10px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+    }
+    .stat b { display: block; color: var(--muted); font-size: 0.7rem; margin-bottom: 2px; }
+    .stat span { font-family: "Consolas", monospace; font-size: 0.85rem; }
+    .stat.full { grid-column: 1 / -1; }
+    .legend {
+      font-size: 0.75rem;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+    .legend i {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+      margin-right: 4px;
+      vertical-align: middle;
+    }
+    #load-error {
+      color: var(--red);
+      font-size: 0.85rem;
+      display: none;
+    }
+    .progress-bar {
+      height: 4px;
+      background: var(--border);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .progress-bar div {
+      height: 100%;
+      background: var(--accent);
+      width: 0%;
+      transition: width 0.1s linear;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>RoboconBN — Gameplay Simulator 2D</h1>
+    <span>BLUE alliance · kinematic viewer · dữ liệu từ field-blue.json + robot-config.json</span>
+  </header>
+  <main>
+    <div id="canvas-wrap"><canvas id="field"></canvas></div>
+    <aside>
+      <div id="load-error"></div>
+      <div class="controls">
+        <button id="btn-play" class="primary">▶ Play</button>
+        <button id="btn-step">Step</button>
+        <button id="btn-reset">Reset</button>
+      </div>
+      <label>Tốc độ
+        <input type="range" id="speed" min="0.25" max="8" step="0.25" value="2">
+        <span id="speed-label">2×</span>
+      </label>
+      <label>Khối trái
+        <select id="left-type">
+          <option value="01">01</option>
+          <option value="02">02</option>
+          <option value="03">03</option>
+          <option value="04">04</option>
+        </select>
+      </label>
+      <label>Khối phải
+        <select id="right-type">
+          <option value="01">01</option>
+          <option value="02" selected>02</option>
+          <option value="03">03</option>
+          <option value="04">04</option>
+        </select>
+      </label>
+      <div class="progress-bar"><div id="progress"></div></div>
+      <div class="stat-grid" id="stats"></div>
+      <div class="legend">
+        <div><i style="background:#3d9eff"></i> Robot</div>
+        <div><i style="background:#f5a623"></i> Kệ (shelf)</div>
+        <div><i style="background:#3dd68c"></i> Factory near</div>
+        <div><i style="background:#ff6b6b"></i> Factory placement</div>
+        <div><i style="background:#8b9cb3"></i> Route / trail</div>
+      </div>
+    </aside>
+  </main>
+  <script>
+(() => {
+  "use strict";
+
+  const BLOCK_CODES = ["01", "02", "03", "04"];
+  const NAV_SPEED_CM_S = 35;
+  const ELEVATOR_SPEED_STEPS_S = 1200;
+  const INSTANT_S = 0.15;
+  const ROBOT_LEN_CM = 40;
+  const ROBOT_WID_CM = 30;
+
+  const canvas = document.getElementById("field");
+  const ctx = canvas.getContext("2d");
+  const statsEl = document.getElementById("stats");
+  const progressEl = document.getElementById("progress");
+  const loadErrorEl = document.getElementById("load-error");
+
+  let fieldData = null;
+  let robotData = null;
+  let fieldModel = null;
+  let timeline = [];
+  let totalDuration = 0;
+  let simTime = 0;
+  let playing = false;
+  let lastFrame = 0;
+  let trail = [];
+  let view = { minX: 0, minY: 0, maxX: 140, maxY: 180, pad: 20 };
+
+  // ── Config parsing ──────────────────────────────────────────────
+
+  function parsePose(p) {
+    return { x: p.x, y: p.y, heading: p.heading };
+  }
+
+  function buildFieldModel(fieldJson, robotJson) {
+    const pts = fieldJson.points;
+    const shelves = [
+      parsePose(fieldJson.shelves.fac1),
+      parsePose(fieldJson.shelves.fac2),
+      parsePose(fieldJson.shelves.fac3),
+    ];
+    const factorySlots = fieldJson.factories.map((f) => ({
+      near: parsePose(f.near),
+      placement: parsePose(f.placement),
+    }));
+    const factories = {};
+    BLOCK_CODES.forEach((code, i) => {
+      const slot = factorySlots[i];
+      factories[code] = { type: code, near: slot.near, placement: slot.placement };
+    });
+    const motion = robotJson.motion || {};
+    const elevator = robotJson.elevator || {};
+    const sensors = robotJson.sensors || {};
+    const sequence = robotJson.sequence || {};
+    return {
+      calibrated: fieldJson.calibrated,
+      placeAtFactory: parsePose(pts.placeAtFactory),
+      shelfApproach: parsePose(pts.shelfApproach),
+      retreat: parsePose(pts.retreat),
+      shelves,
+      factories,
+      releaseBackOutCm: motion.releaseBackOutCm ?? 20,
+      approachSpeed: motion.approachSpeed ?? 0.1,
+      positionToleranceCm: motion.positionToleranceCm ?? 1,
+      irDebounceNs: sensors.irDebounceNs ?? 100_000_000,
+      totalCycles: sequence.totalCycles ?? 6,
+      elevatorSteps: {
+        HOME: elevator.homeSteps ?? 0,
+        READY1: elevator.ready1Steps ?? 844,
+        LIFT1: elevator.lift1Steps ?? 1781,
+        READY2: elevator.ready2Steps ?? 4688,
+        LIFT2: elevator.lift2Steps ?? 5625,
+      },
+    };
+  }
+
+  // ── Timeline builder (mirrors LiftingSequenceStateMachine route) ─
+
+  function moveDuration(from, to) {
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const dh = Math.abs(shortestAngleDelta(from.heading, to.heading));
+    const dist = Math.hypot(dx, dy);
+    const turnTime = dh / 90 * 0.4;
+    return Math.max(0.3, dist / NAV_SPEED_CM_S + turnTime);
+  }
+
+  function shortestAngleDelta(a, b) {
+    let d = ((b - a + 180) % 360 + 360) % 360 - 180;
+    return d;
+  }
+
+  function lerp(a, b, t) { return a + (b - a) * t; }
+
+  function lerpAngle(a, b, t) {
+    return a + shortestAngleDelta(a, b) * t;
+  }
+
+  function lerpPose(a, b, t) {
+    return {
+      x: lerp(a.x, b.x, t),
+      y: lerp(a.y, b.y, t),
+      heading: lerpAngle(a.heading, b.heading, t),
+    };
+  }
+
+  function pushNav(segments, state, from, to, meta = {}) {
+    const dur = moveDuration(from, to);
+    segments.push({
+      kind: "nav",
+      state,
+      from: { ...from },
+      to: { ...to },
+      duration: dur,
+      ...meta,
+    });
+    return { ...to };
+  }
+
+  function pushElevator(segments, state, fromSteps, toSteps, meta = {}) {
+    const delta = Math.abs(toSteps - fromSteps);
+    const dur = Math.max(INSTANT_S, delta / ELEVATOR_SPEED_STEPS_S);
+    segments.push({
+      kind: "elevator",
+      state,
+      fromSteps,
+      toSteps,
+      duration: dur,
+      pose: meta.pose ? { ...meta.pose } : undefined,
+      ...meta,
+    });
+    return toSteps;
+  }
+
+  function pushInstant(segments, state, pose, fork, elevatorSteps, ir, meta = {}) {
+    segments.push({
+      kind: "instant",
+      state,
+      pose: { ...pose },
+      fork,
+      elevatorSteps,
+      irLeft: ir?.left ?? false,
+      irRight: ir?.right ?? false,
+      duration: INSTANT_S,
+      ...meta,
+    });
+  }
+
+  function pushApproach(segments, state, from, shelfX, approachSpeed, meta = {}) {
+    const creepDist = 8;
+    const to = { x: shelfX - creepDist * 0.5, y: from.y, heading: from.heading };
+    const speed = Math.max(5, NAV_SPEED_CM_S * approachSpeed);
+    const dur = Math.max(0.4, creepDist / speed);
+    segments.push({
+      kind: "nav",
+      state,
+      from: { ...from },
+      to,
+      duration: dur,
+      irLeft: true,
+      irRight: true,
+      ...meta,
+    });
+    return { ...to };
+  }
+
+  function buildTimeline(model, leftType, rightType) {
+    const segments = [];
+    let pose = { ...model.placeAtFactory };
+    let elevator = model.elevatorSteps.HOME;
+    let fork = "PLACE";
+    let shelf = 1;
+    let level = 1;
+    const debounceS = model.irDebounceNs / 1e9;
+
+    for (let cycle = 0; cycle < model.totalCycles; cycle++) {
+      const shelfPose = model.shelves[shelf - 1];
+      const leftFac = model.factories[leftType];
+      const rightFac = model.factories[rightType];
+
+      pushInstant(segments, "HOMING", pose, fork, elevator, null, { shelf, level, cycle });
+      elevator = pushElevator(segments, "HOMING", elevator, model.elevatorSteps.HOME,
+        { shelf, level, cycle, pose });
+
+      pushInstant(segments, "SET_PLACE", pose, "PLACE", elevator, null, { shelf, level, cycle });
+      fork = "PLACE";
+
+      pose = pushNav(segments, "PLACE_AT_FACTORY", pose, model.placeAtFactory, { shelf, level, cycle });
+      pose = pushNav(segments, "MOVE_TO_SHELF", pose, shelfPose, { shelf, level, cycle });
+
+      const readyTarget = level === 1 ? "READY1" : "READY2";
+      pushInstant(segments, "SELECT_LEVEL", pose, fork, elevator, null, { shelf, level, cycle });
+      elevator = pushElevator(segments, level === 1 ? "READY1" : "READY2", elevator,
+        model.elevatorSteps[readyTarget], { shelf, level, cycle, pose });
+
+      pushInstant(segments, "SCAN_RIGHT", pose, fork, elevator, null,
+        { shelf, level, cycle, leftType, rightType });
+
+      pose = pushApproach(segments, "APPROACH_IR_SLOW", pose, shelfPose.x, model.approachSpeed,
+        { shelf, level, cycle });
+
+      segments.push({
+        kind: "instant",
+        state: "CONFIRM_IR",
+        pose: { ...pose },
+        fork,
+        elevatorSteps: elevator,
+        irLeft: true,
+        irRight: true,
+        duration: debounceS,
+        shelf,
+        level,
+        cycle,
+      });
+
+      const contactPose = { ...pose };
+      pushInstant(segments, "SAVE_SHELF_POSE", contactPose, fork, elevator,
+        { left: true, right: true }, { shelf, level, cycle });
+
+      const liftTarget = level === 1 ? "LIFT1" : "LIFT2";
+      elevator = pushElevator(segments, liftTarget, elevator, model.elevatorSteps[liftTarget],
+        { shelf, level, cycle, pose: contactPose });
+
+      const backOutPose = {
+        x: contactPose.x + model.releaseBackOutCm,
+        y: contactPose.y,
+        heading: contactPose.heading,
+      };
+      pose = pushNav(segments, "BACK_OUT_FROM_SHELF", contactPose, backOutPose,
+        { shelf, level, cycle });
+
+      pushInstant(segments, "HOLD", pose, "HOLD", elevator, null, { shelf, level, cycle });
+      fork = "HOLD";
+
+      pose = pushNav(segments, "MOVE_NEAR_FACTORY_LEFT", pose, leftFac.near,
+        { shelf, level, cycle, blockType: leftType });
+
+      pushInstant(segments, "PLACE_LEFT", pose, "PLACE", elevator, null,
+        { shelf, level, cycle, blockType: leftType });
+      fork = "PLACE";
+
+      elevator = pushElevator(segments, "READY1_LEFT", elevator, model.elevatorSteps.READY1,
+        { shelf, level, cycle, blockType: leftType, pose });
+
+      pose = pushNav(segments, "MOVE_TO_PLACEMENT_LEFT", pose, leftFac.placement,
+        { shelf, level, cycle, blockType: leftType });
+
+      elevator = pushElevator(segments, "HOME_LEFT", elevator, model.elevatorSteps.HOME,
+        { shelf, level, cycle, blockType: leftType, pose });
+
+      const anchor = { ...pose };
+      const retreat = { ...model.retreat };
+      const backDist = model.releaseBackOutCm;
+      const midRetreat = {
+        x: lerp(anchor.x, retreat.x, 0.5),
+        y: lerp(anchor.y, retreat.y, 0.5),
+        heading: retreat.heading,
+      };
+      pose = pushNav(segments, "BACK_OUT_AFTER_LEFT_RELEASE_20CM", anchor, midRetreat,
+        { shelf, level, cycle, blockType: leftType });
+      pose = pushNav(segments, "BACK_OUT_AFTER_LEFT_RELEASE_20CM", pose, retreat,
+        { shelf, level, cycle, blockType: leftType, backOutCm: backDist });
+
+      elevator = pushElevator(segments, "RIGHT_RE_LIFT", elevator, model.elevatorSteps[liftTarget],
+        { shelf, level, cycle, blockType: rightType, pose });
+
+      pose = pushNav(segments, "MOVE_NEAR_FACTORY_RIGHT", pose, rightFac.near,
+        { shelf, level, cycle, blockType: rightType });
+
+      pushInstant(segments, "PLACE_RIGHT", pose, "PLACE", elevator, null,
+        { shelf, level, cycle, blockType: rightType });
+      fork = "PLACE";
+
+      elevator = pushElevator(segments, "READY1_RIGHT", elevator, model.elevatorSteps.READY1,
+        { shelf, level, cycle, blockType: rightType, pose });
+
+      pose = pushNav(segments, "MOVE_TO_PLACEMENT_RIGHT", pose, rightFac.placement,
+        { shelf, level, cycle, blockType: rightType });
+
+      elevator = pushElevator(segments, "HOME_RIGHT", elevator, model.elevatorSteps.HOME,
+        { shelf, level, cycle, blockType: rightType, pose });
+
+      const anchorR = { ...pose };
+      pose = pushNav(segments, "BACK_OUT_AFTER_RIGHT_RELEASE_20CM", anchorR, retreat,
+        { shelf, level, cycle, blockType: rightType, backOutCm: backDist });
+
+      segments.push({
+        kind: "instant",
+        state: "CYCLE_COMPLETE",
+        pose: { ...pose },
+        fork,
+        elevatorSteps: elevator,
+        irLeft: false,
+        irRight: false,
+        duration: INSTANT_S,
+        shelf,
+        level,
+        cycle: cycle + 1,
+      });
+
+      if (level === 2) {
+        level = 1;
+        shelf++;
+      } else {
+        level = 2;
+      }
+    }
+
+    segments.push({
+      kind: "instant",
+      state: "SAFE_STOP",
+      pose: { ...pose },
+      fork,
+      elevatorSteps: elevator,
+      irLeft: false,
+      irRight: false,
+      duration: 0.5,
+      shelf: 3,
+      level: 2,
+      cycle: model.totalCycles,
+    });
+
+    let t = 0;
+    for (const seg of segments) {
+      seg.start = t;
+      seg.end = t + seg.duration;
+      t += seg.duration;
+    }
+    return { segments, totalDuration: t };
+  }
+
+  // ── Simulation state at time t ────────────────────────────────
+
+  function sampleAtTime(t) {
+    if (!timeline.length) return null;
+    const clamped = Math.min(t, totalDuration);
+    const seg = timeline.find((s) => clamped >= s.start && clamped < s.end)
+      || timeline[timeline.length - 1];
+    const local = Math.min(1, Math.max(0, (clamped - seg.start) / seg.duration));
+    let pose, fork = "PLACE", elevatorSteps = 0, irLeft = false, irRight = false;
+
+    if (seg.kind === "nav") {
+      pose = lerpPose(seg.from, seg.to, easeInOut(local));
+      if (seg.irLeft) { irLeft = local > 0.6; irRight = local > 0.6; }
+    } else if (seg.kind === "elevator") {
+      pose = seg.pose ? { ...seg.pose } : { ...fieldModel.placeAtFactory };
+      elevatorSteps = Math.round(lerp(seg.fromSteps, seg.toSteps, easeInOut(local)));
+    } else {
+      pose = { ...seg.pose };
+      fork = seg.fork || "PLACE";
+      elevatorSteps = seg.elevatorSteps ?? 0;
+      irLeft = seg.irLeft ?? false;
+      irRight = seg.irRight ?? false;
+    }
+
+    if (seg.fork) fork = seg.fork;
+
+    return {
+      pose,
+      state: seg.state,
+      fork,
+      elevatorSteps,
+      irLeft,
+      irRight,
+      shelf: seg.shelf ?? 1,
+      level: seg.level ?? 1,
+      cycle: seg.cycle ?? 0,
+      leftType: seg.leftType || document.getElementById("left-type").value,
+      rightType: seg.rightType || document.getElementById("right-type").value,
+      target: seg.kind === "nav" ? seg.to : null,
+      segment: seg,
+    };
+  }
+
+  function easeInOut(t) {
+    return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+  }
+
+  // ── Canvas rendering ──────────────────────────────────────────
+
+  function computeViewBounds() {
+    const pts = [];
+    const add = (p) => pts.push(p);
+    add(fieldModel.placeAtFactory);
+    add(fieldModel.retreat);
+    add(fieldModel.shelfApproach);
+    fieldModel.shelves.forEach(add);
+    Object.values(fieldModel.factories).forEach((f) => {
+      add(f.near);
+      add(f.placement);
+    });
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const p of pts) {
+      minX = Math.min(minX, p.x);
+      minY = Math.min(minY, p.y);
+      maxX = Math.max(maxX, p.x);
+      maxY = Math.max(maxY, p.y);
+    }
+    const pad = 15;
+    view = { minX: minX - pad, minY: minY - pad, maxX: maxX + pad, maxY: maxY + pad, pad };
+  }
+
+  function fieldToCanvas(x, y, w, h) {
+    const fw = view.maxX - view.minX;
+    const fh = view.maxY - view.minY;
+    const margin = 30;
+    const scale = Math.min((w - margin * 2) / fw, (h - margin * 2) / fh);
+    const ox = margin + (w - margin * 2 - fw * scale) / 2;
+    const oy = margin + (h - margin * 2 - fh * scale) / 2;
+    const cx = ox + (x - view.minX) * scale;
+    const cy = h - oy - (y - view.minY) * scale;
+    return { cx, cy, scale };
+  }
+
+  function resizeCanvas() {
+    const wrap = document.getElementById("canvas-wrap");
+    const dpr = window.devicePixelRatio || 1;
+    const w = wrap.clientWidth;
+    const h = Math.max(400, window.innerHeight - 120);
+    wrap.style.height = h + "px";
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    canvas.style.width = w + "px";
+    canvas.style.height = h + "px";
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    draw();
+  }
+
+  function drawGrid(w, h) {
+    ctx.strokeStyle = "#1e2a3a";
+    ctx.lineWidth = 1;
+    const step = 20;
+    for (let x = view.minX; x <= view.maxX; x += step) {
+      const a = fieldToCanvas(x, view.minY, w, h);
+      const b = fieldToCanvas(x, view.maxY, w, h);
+      ctx.beginPath();
+      ctx.moveTo(a.cx, a.cy);
+      ctx.lineTo(b.cx, b.cy);
+      ctx.stroke();
+    }
+    for (let y = view.minY; y <= view.maxY; y += step) {
+      const a = fieldToCanvas(view.minX, y, w, h);
+      const b = fieldToCanvas(view.maxX, y, w, h);
+      ctx.beginPath();
+      ctx.moveTo(a.cx, a.cy);
+      ctx.lineTo(b.cx, b.cy);
+      ctx.stroke();
+    }
+    ctx.fillStyle = "#5a6a7a";
+    ctx.font = "10px Consolas, monospace";
+    ctx.fillText("+X →", fieldToCanvas(view.maxX - 5, view.minY + 5, w, h).cx - 30,
+      fieldToCanvas(view.maxX - 5, view.minY + 5, w, h).cy);
+    ctx.fillText("+Y ↑", fieldToCanvas(view.minX + 5, view.maxY - 5, w, h).cx,
+      fieldToCanvas(view.minX + 5, view.maxY - 5, w, h).cy + 12);
+  }
+
+  function drawMarker(p, w, h, color, label, r = 5) {
+    const { cx, cy } = fieldToCanvas(p.x, p.y, w, h);
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fill();
+    if (label) {
+      ctx.fillStyle = "#8b9cb3";
+      ctx.font = "10px sans-serif";
+      ctx.fillText(label, cx + 8, cy - 4);
+    }
+  }
+
+  function drawFactorySlot(fac, code, w, h) {
+    drawMarker(fac.near, w, h, "#3dd68c", code + " near", 4);
+    drawMarker(fac.placement, w, h, "#ff6b6b", code + " place", 4);
+    const a = fieldToCanvas(fac.near.x, fac.near.y, w, h);
+    const b = fieldToCanvas(fac.placement.x, fac.placement.y, w, h);
+    ctx.strokeStyle = "#2d4a3a";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.moveTo(a.cx, a.cy);
+    ctx.lineTo(b.cx, b.cy);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  function drawTrail(w, h) {
+    if (trail.length < 2) return;
+    ctx.strokeStyle = "rgba(61, 158, 255, 0.35)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let i = 0; i < trail.length; i++) {
+      const { cx, cy } = fieldToCanvas(trail[i].x, trail[i].y, w, h);
+      if (i === 0) ctx.moveTo(cx, cy);
+      else ctx.lineTo(cx, cy);
+    }
+    ctx.stroke();
+  }
+
+  function drawRobot(pose, w, h, fork, irL, irR) {
+    const { cx, cy, scale } = fieldToCanvas(pose.x, pose.y, w, h);
+    const len = ROBOT_LEN_CM * scale;
+    const wid = ROBOT_WID_CM * scale;
+    const rad = (-pose.heading * Math.PI) / 180;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(rad);
+    ctx.fillStyle = fork === "HOLD" ? "#2d8ae6" : "#3d9eff";
+    ctx.strokeStyle = "#fff";
+    ctx.lineWidth = 1.5;
+    ctx.fillRect(-len / 2, -wid / 2, len, wid);
+    ctx.strokeRect(-len / 2, -wid / 2, len, wid);
+    ctx.fillStyle = "#fff";
+    ctx.beginPath();
+    ctx.moveTo(len / 2, 0);
+    ctx.lineTo(len / 2 - 8, -5);
+    ctx.lineTo(len / 2 - 8, 5);
+    ctx.closePath();
+    ctx.fill();
+    if (irL || irR) {
+      ctx.fillStyle = "#f5a623";
+      ctx.beginPath();
+      ctx.arc(-len / 2, 0, 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function drawTarget(target, w, h) {
+    if (!target) return;
+    const { cx, cy } = fieldToCanvas(target.x, target.y, w, h);
+    ctx.strokeStyle = "rgba(245, 166, 35, 0.7)";
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.arc(cx, cy, 10, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  function draw(w, h) {
+    w = w || canvas.clientWidth;
+    h = h || canvas.clientHeight;
+    if (!fieldModel) return;
+    ctx.fillStyle = "#0a0e14";
+    ctx.fillRect(0, 0, w, h);
+    drawGrid(w, h);
+
+    fieldModel.shelves.forEach((s, i) => {
+      drawMarker(s, w, h, "#f5a623", "fac" + (i + 1), 6);
+    });
+    BLOCK_CODES.forEach((code) => drawFactorySlot(fieldModel.factories[code], code, w, h));
+    drawMarker(fieldModel.placeAtFactory, w, h, "#8b9cb3", "start", 5);
+    drawMarker(fieldModel.retreat, w, h, "#8b9cb3", "retreat", 4);
+
+    drawTrail(w, h);
+    const sample = sampleAtTime(simTime);
+    if (sample) {
+      drawTarget(sample.target, w, h);
+      drawRobot(sample.pose, w, h, sample.fork, sample.irLeft, sample.irRight);
+      updateStats(sample);
+    }
+    progressEl.style.width = totalDuration > 0 ? (simTime / totalDuration * 100) + "%" : "0%";
+  }
+
+  function updateStats(s) {
+    const elevName = stepsToElevatorName(s.elevatorSteps);
+    statsEl.innerHTML = `
+      <div class="stat"><b>State</b><span>${s.state}</span></div>
+      <div class="stat"><b>Shelf / Level</b><span>${s.shelf} / ${s.level}</span></div>
+      <div class="stat"><b>Cycles</b><span>${s.cycle} / ${fieldModel.totalCycles}</span></div>
+      <div class="stat"><b>Fork</b><span>${s.fork}</span></div>
+      <div class="stat full"><b>Pose (cm)</b><span>${s.pose.x.toFixed(1)}, ${s.pose.y.toFixed(1)}, ${s.pose.heading.toFixed(1)}°</span></div>
+      <div class="stat"><b>Elevator</b><span>${elevName} (${s.elevatorSteps})</span></div>
+      <div class="stat"><b>IR L/R</b><span>${s.irLeft} / ${s.irRight}</span></div>
+      <div class="stat full"><b>Blocks</b><span>${s.leftType} / ${s.rightType}</span></div>
+      <div class="stat full"><b>Time</b><span>${simTime.toFixed(1)}s / ${totalDuration.toFixed(1)}s</span></div>
+    `;
+  }
+
+  function stepsToElevatorName(steps) {
+    const e = fieldModel.elevatorSteps;
+    const entries = Object.entries(e);
+    let best = "HOME";
+    let bestDiff = Infinity;
+    for (const [name, val] of entries) {
+      const d = Math.abs(val - steps);
+      if (d < bestDiff) { bestDiff = d; best = name; }
+    }
+    return best;
+  }
+
+  // ── Playback controls ─────────────────────────────────────────
+
+  function rebuildTimeline() {
+    const left = document.getElementById("left-type").value;
+    const right = document.getElementById("right-type").value;
+    const built = buildTimeline(fieldModel, left, right);
+    timeline = built.segments;
+    totalDuration = built.totalDuration;
+    simTime = 0;
+    trail = [];
+    playing = false;
+    document.getElementById("btn-play").textContent = "▶ Play";
+    draw();
+  }
+
+  function reset() {
+    simTime = 0;
+    trail = [];
+    playing = false;
+    document.getElementById("btn-play").textContent = "▶ Play";
+    draw();
+  }
+
+  function stepForward() {
+    if (!timeline.length) return;
+    const nextBoundary = timeline.find((s) => s.start > simTime);
+    if (nextBoundary) simTime = nextBoundary.start;
+    else simTime = totalDuration;
+    draw();
+  }
+
+  function tick(now) {
+    if (!playing) return;
+    const dt = (now - lastFrame) / 1000;
+    lastFrame = now;
+    const speed = parseFloat(document.getElementById("speed").value);
+    simTime = Math.min(totalDuration, simTime + dt * speed);
+    const sample = sampleAtTime(simTime);
+    if (sample) {
+      if (!trail.length || Math.hypot(
+        trail[trail.length - 1].x - sample.pose.x,
+        trail[trail.length - 1].y - sample.pose.y) > 2) {
+        trail.push({ ...sample.pose });
+      }
+    }
+    draw();
+    if (simTime >= totalDuration) {
+      playing = false;
+      document.getElementById("btn-play").textContent = "▶ Play";
+    } else {
+      requestAnimationFrame(tick);
+    }
+  }
+
+  // ── Self-check assertions ─────────────────────────────────────
+
+  function runSelfChecks() {
+    console.assert(fieldModel.shelves.length === 3, "expected 3 shelves");
+    console.assert(BLOCK_CODES.length === 4, "expected 4 factory codes");
+    BLOCK_CODES.forEach((code) => {
+      console.assert(fieldModel.factories[code], "missing factory " + code);
+    });
+
+    const built = buildTimeline(fieldModel, "01", "02");
+    console.assert(built.segments.length > 0, "timeline empty");
+    const cycleCompletes = built.segments.filter((s) => s.state === "CYCLE_COMPLETE");
+    console.assert(cycleCompletes.length === 6, "expected 6 cycles, got " + cycleCompletes.length);
+    const safeStop = built.segments.find((s) => s.state === "SAFE_STOP");
+    console.assert(safeStop, "missing SAFE_STOP");
+
+    const w = 800, h = 600;
+    const p1 = fieldToCanvas(0, 0, w, h);
+    const p2 = fieldToCanvas(10, 10, w, h);
+    console.assert(p2.cx > p1.cx, "field +X should map to canvas right");
+    console.assert(p2.cy < p1.cy, "field +Y should map to canvas up");
+
+    const sample = sampleAtTime(0);
+    console.assert(sample && sample.state === "HOMING", "should start at HOMING");
+  }
+
+  // ── Init ──────────────────────────────────────────────────────
+
+  async function init() {
+    try {
+      const [fieldRes, robotRes] = await Promise.all([
+        fetch("../TeamCode/src/main/assets/field-blue.json"),
+        fetch("../TeamCode/src/main/assets/robot-config.json"),
+      ]);
+      if (!fieldRes.ok || !robotRes.ok) throw new Error("Không tải được JSON config");
+      fieldData = await fieldRes.json();
+      robotData = await robotRes.json();
+      fieldModel = buildFieldModel(fieldData, robotData);
+      if (!fieldModel.calibrated) {
+        loadErrorEl.textContent = "Cảnh báo: field chưa calibrated=true";
+        loadErrorEl.style.display = "block";
+      }
+      computeViewBounds();
+      rebuildTimeline();
+      runSelfChecks();
+    } catch (e) {
+      loadErrorEl.textContent = "Lỗi: " + e.message
+        + " — chạy python -m http.server 8000 từ root repo rồi mở /simulator/";
+      loadErrorEl.style.display = "block";
+    }
+    resizeCanvas();
+  }
+
+  document.getElementById("btn-play").addEventListener("click", () => {
+    if (!timeline.length) return;
+    playing = !playing;
+    document.getElementById("btn-play").textContent = playing ? "⏸ Pause" : "▶ Play";
+    if (playing) {
+      lastFrame = performance.now();
+      requestAnimationFrame(tick);
+    }
+  });
+  document.getElementById("btn-step").addEventListener("click", stepForward);
+  document.getElementById("btn-reset").addEventListener("click", reset);
+  document.getElementById("speed").addEventListener("input", (e) => {
+    document.getElementById("speed-label").textContent = e.target.value + "×";
+  });
+  document.getElementById("left-type").addEventListener("change", rebuildTimeline);
+  document.getElementById("right-type").addEventListener("change", rebuildTimeline);
+  window.addEventListener("resize", resizeCanvas);
+
+  init();
+})();
+  </script>
+</body>
+</html>
