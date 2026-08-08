@@ -122,9 +122,9 @@ public abstract class LiftingSequenceOpMode extends LinearOpMode {
                         robot.localizer.getX(), robot.localizer.getY(), robot.localizer.getHeadingDeg());
                 telemetry.addData("route", navigation.describe());
                 telemetry.addData("blocks", "%s / %s", machine.getLeftType(), machine.getRightType());
-                telemetry.addData("camera", "leftFresh=%s rightFresh=%s stable=%s dx=%.1f",
-                        camera.leftFresh(now), camera.rightFresh(now),
-                        camera.stableLeftTarget(), camera.leftDxPx());
+                telemetry.addData("camera", "leftValid=%s leftFresh=%s rightValid=%s rightFresh=%s",
+                        camera.leftValid(), camera.leftFresh(now),
+                        camera.rightValid(), camera.rightFresh(now));
                 telemetry.addData("config", "schema %d fingerprint %s", config.version, config.fingerprint);
                 telemetry.addData("failure", machine.getFailure());
                 telemetry.update();
