@@ -32,6 +32,7 @@ public final class LiftingSequenceTest {
         double poseX = 0;
         double poseY = 0;
         int goToCalls = 0;
+        int strafeCommands = 0;
         LiftingSequenceConfig.Pose lastTarget = null;
 
         public void stop() {
@@ -52,7 +53,9 @@ public final class LiftingSequenceTest {
             events.add(pose.name());
         }
 
-        public void drive(double forward, double strafe) {}
+        public void drive(double forward, double strafe) {
+            if (strafe != 0) strafeCommands++;
+        }
 
         public void stopDrive() {}
 
@@ -158,16 +161,41 @@ public final class LiftingSequenceTest {
         check("safe stop", machine.getState() == LiftingSequenceStateMachine.State.SAFE_STOP && actuators.stop);
     }
 
-    static void testInvalidCamera() throws Exception {
+    static void assertScanHolds(String name, Cam cam) throws Exception {
         C clock = new C();
         H actuators = new H();
-        Cam cam = new Cam();
         LiftingSequenceStateMachine machine = new LiftingSequenceStateMachine(clock, actuators, cam, config());
         advanceToScan(machine, clock);
-        check("reached scan", machine.getState() == LiftingSequenceStateMachine.State.SCAN_RIGHT);
-        cam.leftValid = false;
         machine.tick();
-        check("invalid camera holds", machine.getState() == LiftingSequenceStateMachine.State.SCAN_RIGHT);
+        check(name + " holds", machine.getState() == LiftingSequenceStateMachine.State.SCAN_RIGHT);
+        check(name + " preserves left", "01".equals(machine.getLeftType()));
+        check(name + " preserves right", "02".equals(machine.getRightType()));
+    }
+
+    static void testClassificationRequiresBothChannels() throws Exception {
+        Cam leftInvalid = new Cam();
+        leftInvalid.leftValid = false;
+        assertScanHolds("left invalid", leftInvalid);
+
+        Cam rightInvalid = new Cam();
+        rightInvalid.rightValid = false;
+        assertScanHolds("right invalid", rightInvalid);
+
+        Cam leftStale = new Cam();
+        leftStale.leftFresh = false;
+        assertScanHolds("left stale", leftStale);
+
+        Cam rightStale = new Cam();
+        rightStale.rightFresh = false;
+        assertScanHolds("right stale", rightStale);
+
+        Cam leftUnknown = new Cam();
+        leftUnknown.leftType = "unknown";
+        assertScanHolds("left unknown", leftUnknown);
+
+        Cam rightUnknown = new Cam();
+        rightUnknown.rightType = "unknown";
+        assertScanHolds("right unknown", rightUnknown);
     }
 
     static void testScanLatchesBlockTypes() throws Exception {
@@ -178,28 +206,11 @@ public final class LiftingSequenceTest {
         cam.rightType = "04";
         LiftingSequenceStateMachine machine = new LiftingSequenceStateMachine(clock, actuators, cam, config());
         advanceToScan(machine, clock);
-        cam.tickStable();
         machine.tick();
-        check("scan advances", machine.getState() == LiftingSequenceStateMachine.State.CENTER_LEFT_SLOW);
+        check("scan advances directly", machine.getState() == LiftingSequenceStateMachine.State.APPROACH_IR_SLOW);
         check("left type", "03".equals(machine.getLeftType()));
         check("right type", "04".equals(machine.getRightType()));
-    }
-
-    static void testCenterStable() throws Exception {
-        C clock = new C();
-        H actuators = new H();
-        Cam cam = new Cam();
-        LiftingSequenceStateMachine machine = new LiftingSequenceStateMachine(clock, actuators, cam, config());
-        advanceToScan(machine, clock);
-        cam.tickStable();
-        machine.tick();
-        check("in center", machine.getState() == LiftingSequenceStateMachine.State.CENTER_LEFT_SLOW);
-        cam.tickStable();
-        machine.tick();
-        check("not stable yet", machine.getState() == LiftingSequenceStateMachine.State.CENTER_LEFT_SLOW);
-        cam.tickStable();
-        machine.tick();
-        check("stable center", machine.getState() == LiftingSequenceStateMachine.State.APPROACH_IR_SLOW);
+        check("classification does not strafe", actuators.strafeCommands == 0);
     }
 
     static void testSerial() throws Exception {
@@ -268,9 +279,8 @@ public final class LiftingSequenceTest {
     public static void main(String[] args) throws Exception {
         LiftingSequenceConfig.validate();
         testSafety();
-        testInvalidCamera();
+        testClassificationRequiresBothChannels();
         testScanLatchesBlockTypes();
-        testCenterStable();
         testSerial();
         testBackOutAnchor();
         testStateTimeout();
