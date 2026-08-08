@@ -9,15 +9,25 @@ public final class Pi5CameraTransportFactory {
             HardwareMap hardwareMap,
             LiftingSequenceConfig config,
             HardwareContracts.Clock clock) {
+        return createTransport(hardwareMap, config, clock);
+    }
+
+    public static PiCdcCameraTransport createTransport(
+            HardwareMap hardwareMap,
+            LiftingSequenceConfig config,
+            HardwareContracts.Clock clock) {
         if (hardwareMap == null || config == null || clock == null) {
             throw new IllegalArgumentException("missing pi5 camera dependencies");
         }
         PiCdcCameraTransport transport = new PiCdcCameraTransport(
                 hardwareMap.appContext,
-                config.sensorStaleNs / 1_000_000L
+                config.sensorStaleNs,
+                config.cameraFrameWidth,
+                config.cameraFrameHeight
         );
         if (!transport.start()) {
-            throw new IllegalStateException("Pi USB CDC ACM device unavailable");
+            throw new IllegalStateException("Pi USB CDC ACM device unavailable: "
+                    + transport.receiver().getLastError());
         }
         return transport;
     }

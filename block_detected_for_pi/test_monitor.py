@@ -125,7 +125,6 @@ class FrameRecordTests(unittest.TestCase):
             frame_valid=False,
             left=left,
             right=right,
-            payload=0,
             heartbeat=0,
             no_cdc=True,
         )

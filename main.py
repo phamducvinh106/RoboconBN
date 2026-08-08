@@ -11,7 +11,6 @@ import cv2
 from block_detected_for_pi.config import BlockCodeConfig
 from block_detected_for_pi.cdc_publisher import CdcPublisher
 from block_detected_for_pi.core import TargetingCore
-from block_detected_for_pi.frame_state import RegisterFile
 from block_detected_for_pi.mjpeg_stream import (
     ENABLE_STREAM,
     JPEG_QUALITY,
@@ -21,7 +20,6 @@ from block_detected_for_pi.mjpeg_stream import (
     MjpegStreamer,
 )
 from block_detected_for_pi.overlay import annotate_frame, compose_stream_frame
-from block_detected_for_pi.payload import build_registers, frame_from_targets, unpack_payload
 from block_detected_for_pi.types import Target
 from cli.monitor import CliMonitor
 from cli.state import CameraState, DetectionState, MonitorState, UsbCdcState
@@ -129,22 +127,13 @@ def build_frame_record(
     frame_valid: bool,
     left: Target,
     right: Target,
-    payload: int,
     heartbeat: int,
     no_cdc: bool,
 ) -> dict[str, object]:
-    decoded = unpack_payload(payload)
     return {
         "frame_valid": frame_valid,
         "left": left.packet(),
         "right": right.packet(),
-        "payload": payload,
-        "decoded": {
-            "x": decoded.x,
-            "y": decoded.y,
-            "left_code": decoded.left_code,
-            "right_code": decoded.right_code,
-        },
         "heartbeat": heartbeat,
         "cdc": not no_cdc,
     }
@@ -234,7 +223,6 @@ def run(argv: list[str] | None = None) -> int:
     use_dashboard = not args.json and not args.no_ui
     model_path = resolve_model(args.model)
     code_config = BlockCodeConfig()
-    register_file = RegisterFile()
     cdc = None
     if not args.no_cdc:
         cdc = CdcPublisher(args.cdc_device)
@@ -324,23 +312,16 @@ def run(argv: list[str] | None = None) -> int:
                 inference_end = time.perf_counter()
                 left_code = code_config.code_for(left.class_id, left.class_name) if left.found else None
                 right_code = code_config.code_for(right.class_id, right.class_name) if right.found else None
-                payload, frame_valid, left_found, right_found = frame_from_targets(
-                    left,
-                    right,
-                    left_code=left_code,
-                    right_code=right_code,
-                    min_confidence=args.conf,
+                frame_valid = (
+                    (not left.found or left_code is not None)
+                    and (not right.found or right_code is not None)
+                    and (left.confidence >= args.conf if left.found else True)
+                    and (right.confidence >= args.conf if right.found else True)
                 )
-                frame = build_registers(
-                    payload=payload,
-                    frame_valid=frame_valid,
-                    left_found=left_found,
-                    right_found=right_found,
-                    heartbeat=register_file.heartbeat,
-                )
-                heartbeat = register_file.publish(frame)
+                heartbeat = 0
                 if cdc is not None:
                     cdc.publish(left=left, right=right, frame_valid=frame_valid)
+                    heartbeat = cdc.heartbeat
 
                 metric_frames += 1
                 now = time.monotonic()
@@ -377,7 +358,6 @@ def run(argv: list[str] | None = None) -> int:
                     frame_valid=frame_valid,
                     left=left,
                     right=right,
-                    payload=payload,
                     heartbeat=heartbeat,
                     no_cdc=args.no_cdc,
                 )

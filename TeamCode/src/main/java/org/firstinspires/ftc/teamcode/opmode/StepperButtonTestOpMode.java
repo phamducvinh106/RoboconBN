@@ -4,21 +4,31 @@ import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DigitalChannel;
 
+import org.firstinspires.ftc.teamcode.core.LiftingSequenceConfig;
+import org.firstinspires.ftc.teamcode.core.RobotConfigAssets;
 import org.firstinspires.ftc.teamcode.core.RobotHardware;
 
 @TeleOp(name = "Stepper Five Position Test", group = "Test")
 public final class StepperButtonTestOpMode extends LinearOpMode {
-    private static final RobotHardware.ElevatorState[] POSITIONS = {
-            RobotHardware.ElevatorState.HOME,
-            RobotHardware.ElevatorState.READY1,
-            RobotHardware.ElevatorState.LIFT1,
-            RobotHardware.ElevatorState.READY2,
-            RobotHardware.ElevatorState.LIFT2
+    private static final LiftingSequenceConfig.ElevatorTarget[] POSITIONS = {
+            LiftingSequenceConfig.ElevatorTarget.HOME,
+            LiftingSequenceConfig.ElevatorTarget.READY1,
+            LiftingSequenceConfig.ElevatorTarget.LIFT1,
+            LiftingSequenceConfig.ElevatorTarget.READY2,
+            LiftingSequenceConfig.ElevatorTarget.LIFT2
     };
 
     @Override
     public void runOpMode() throws InterruptedException {
-        RobotHardware robot = new RobotHardware(hardwareMap);
+        LiftingSequenceConfig config;
+        try {
+            config = RobotConfigAssets.load(hardwareMap.appContext.getAssets());
+        } catch (Exception error) {
+            telemetry.addData("SAFE_STOP", "invalid config: %s", error.getMessage());
+            telemetry.update();
+            return;
+        }
+        RobotHardware robot = new RobotHardware(hardwareMap, config);
         DigitalChannel step = robot.step;
         DigitalChannel dir = robot.dir;
         int selected = 0;
@@ -43,13 +53,13 @@ public final class StepperButtonTestOpMode extends LinearOpMode {
             lastUp = up;
             lastDown = down;
 
-            RobotHardware.ElevatorState target = POSITIONS[selected];
+            LiftingSequenceConfig.ElevatorTarget target = POSITIONS[selected];
             boolean reached;
-            if (target == RobotHardware.ElevatorState.HOME) {
+            if (target == LiftingSequenceConfig.ElevatorTarget.HOME) {
                 reached = robot.homeElevator();
                 homed = reached;
             } else {
-                reached = robot.stepElevatorToward(target.steps(), System.nanoTime());
+                reached = robot.stepElevatorToward(config.elevatorSteps(target), System.nanoTime());
             }
 
             telemetry.addData("target", "%d/%s", selected, target.name());

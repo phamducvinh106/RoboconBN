@@ -7,7 +7,10 @@ public final class HardwareContracts {
     public interface ServoChannel { void setPosition(double position); }
     public interface BooleanSensor { boolean active(); }
     public interface PoseSource { PoseReading read(); }
-    public interface CameraTransport { CameraFrameContract read(CameraChannel channel); }
+    public interface CameraTransport {
+        CameraFrameContract read(CameraChannel channel);
+        default void close() { }
+    }
     public static final class PoseReading {
         public final double xCm, yCm, headingDeg; public final long timestampNs; public final boolean valid;
         public PoseReading(double xCm, double yCm, double headingDeg, long timestampNs) {

@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "fork": {
+    "placeLeft": 0.25,
+    "placeRight": 0.75,
+    "holdLeft": 0.50,
+    "holdRight": 0.50
+  },
+  "elevator": {
+    "stepHighNs": 1,
+    "stepLowNs": 1,
+    "homeSteps": 0,
+    "ready1Steps": 844,
+    "lift1Steps": 1781,
+    "ready2Steps": 4688,
+    "lift2Steps": 5625,
+    "elevatorTimeoutNs": 8000000000
+  },
+  "sensors": {
+    "endstopActiveLow": true,
+    "irActiveLow": true,
+    "irDebounceNs": 100000000,
+    "sensorStaleNs": 250000000,
+    "encoderFreshnessNs": 250000000
+  },
+  "camera": {
+    "frameWidth": 640,
+    "frameHeight": 480,
+    "centerDeadbandPx": 8,
+    "centerStableFrames": 3
+  },
+  "motion": {
+    "scanSpeed": 0.2,
+    "centerSpeed": 0.15,
+    "approachSpeed": 0.1,
+    "positionToleranceCm": 1.0,
+    "headingToleranceDeg": 3.0,
+    "releaseBackOutCm": 20.0,
+    "noProgressCm": 0.1
+  },
+  "sequence": {
+    "stateTimeoutNs": 10000000000,
+    "maxRetries": 2,
+    "settleCycles": 3,
+    "totalCycles": 6
+  }
+}

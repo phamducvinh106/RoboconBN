@@ -7,22 +7,8 @@ import com.qualcomm.robotcore.hardware.HardwareMap;
 import com.qualcomm.robotcore.hardware.IMU;
 import com.qualcomm.robotcore.hardware.Servo;
 
-import org.firstinspires.ftc.robotcore.external.hardware.camera.WebcamName;
-
 public final class RobotHardware {
-    public enum ElevatorState {
-        HOME(0), READY1(844), LIFT1(1781), READY2(4688), LIFT2(5625);
-        final int steps;
-        ElevatorState(int steps) { this.steps = steps; }
-        public int steps() { return steps; }
-    }
-
-    private long pulseLowUntilNs;
-    private long pulseHighUntilNs;
-    private boolean pulseActive;
-    private boolean commandUp;
-    private static final long STEP_PULSE_NS = LiftingSequenceConfig.STEP_HIGH_NS;
-    private static final long STEP_LOW_NS = LiftingSequenceConfig.STEP_LOW_NS;
+    private final LiftingSequenceConfig config;
     private int elevatorStepPosition;
     private boolean elevatorPositionKnown;
 
@@ -37,12 +23,15 @@ public final class RobotHardware {
     public final DigitalChannel step;
     public final DigitalChannel dir;
     public final DigitalChannel endstop1;
-    public final WebcamName webcam1;
-    public final WebcamName webcam2;
     public final IMU imu;
     public final Localizer localizer;
 
     public RobotHardware(HardwareMap hardwareMap) {
+        this(hardwareMap, null);
+    }
+
+    public RobotHardware(HardwareMap hardwareMap, LiftingSequenceConfig config) {
+        this.config = config;
         leftfront = hardwareMap.get(DcMotorEx.class, "leftfront");
         leftback = hardwareMap.get(DcMotorEx.class, "leftback");
         rightfront = hardwareMap.get(DcMotorEx.class, "rightfront");
@@ -54,12 +43,8 @@ public final class RobotHardware {
         step = output(hardwareMap, "step");
         dir = output(hardwareMap, "dir");
         endstop1 = input(hardwareMap, "endstop1");
-        webcam1 = hardwareMap.get(WebcamName.class, "webcam1");
-        webcam2 = hardwareMap.get(WebcamName.class, "webcam2");
         imu = hardwareMap.get(IMU.class, "imu");
-
         stopActuators();
-        // Contract: Localizer(parallelPod, perpendicularPod) means leftfront=forward, rightfront=strafe.
         localizer = new Localizer(
                 leftfront,
                 rightfront,
@@ -81,8 +66,10 @@ public final class RobotHardware {
         return stepElevatorToward(0, System.nanoTime());
     }
 
-    public boolean stepElevatorToward(int targetSteps, long nowNs) {
-        if (targetSteps < 0 || targetSteps > LiftingSequenceConfig.ElevatorTarget.LIFT2.steps) {
+    /** Blocks until target is reached or homing completes. */
+    public boolean stepElevatorToward(int targetSteps, long ignoredNowNs) {
+        int maxSteps = config == null ? 5625 : config.lift2Steps;
+        if (targetSteps < 0 || targetSteps > maxSteps) {
             throw new IllegalArgumentException("elevator target out of bounds");
         }
         if (targetSteps == 0 && elevatorHomed()) {
@@ -92,63 +79,36 @@ public final class RobotHardware {
             return true;
         }
         int delta = targetSteps - elevatorStepPosition;
-        if (delta == 0) { step.setState(false); return true; }
+        if (delta == 0) {
+            step.setState(false);
+            return true;
+        }
         boolean up = delta > 0;
-        if (pulseActive && up != commandUp) return false;
-        if (nowNs < pulseLowUntilNs) return false;
-        if (targetSteps == 0 && elevatorHomed()) {
-            step.setState(false);
-            elevatorStepPosition = 0;
-            elevatorPositionKnown = true;
-            pulseActive = false;
-            return true;
-        }
-        if (!pulseActive) {
-            step.setState(false);
-            dir.setState(up);
-            commandUp = up;
-            step.setState(true);
-            pulseActive = true;
-            pulseHighUntilNs = nowNs + STEP_PULSE_NS;
-            return false;
-        }
-        if (nowNs < pulseHighUntilNs) return false;
+        int remaining = Math.abs(delta);
+        long highNs = stepHighNs();
+        long lowNs = stepLowNs();
         step.setState(false);
-        pulseActive = false;
-        pulseLowUntilNs = nowNs + STEP_LOW_NS;
-        if (!up && elevatorHomed()) {
-            elevatorStepPosition = 0;
-            elevatorPositionKnown = true;
-            return true;
+        dir.setState(up);
+        for (int i = 0; i < remaining; i++) {
+            if (!up && elevatorHomed()) {
+                step.setState(false);
+                elevatorStepPosition = 0;
+                elevatorPositionKnown = true;
+                return targetSteps == 0;
+            }
+            step.setState(true);
+            busyWaitNs(highNs);
+            step.setState(false);
+            busyWaitNs(lowNs);
+            if (!up && elevatorHomed()) {
+                elevatorStepPosition = 0;
+                elevatorPositionKnown = true;
+                return targetSteps == 0;
+            }
+            elevatorStepPosition += up ? 1 : -1;
         }
-        elevatorStepPosition += up ? 1 : -1;
-        elevatorPositionKnown = elevatorStepPosition >= 0 && elevatorStepPosition <= LiftingSequenceConfig.ElevatorTarget.LIFT2.steps;
+        elevatorPositionKnown = elevatorStepPosition >= 0 && elevatorStepPosition <= maxSteps;
         return elevatorStepPosition == targetSteps;
-    }
-
-    public boolean moveElevatorToReady1() {
-        return moveElevatorTo(ElevatorState.READY1);
-    }
-
-    public boolean moveElevatorToLift1() {
-        return moveElevatorTo(ElevatorState.LIFT1);
-    }
-
-    public boolean moveElevatorToReady2() {
-        return moveElevatorTo(ElevatorState.READY2);
-    }
-
-    public boolean moveElevatorToLift2() {
-        return moveElevatorTo(ElevatorState.LIFT2);
-    }
-
-    public boolean moveElevatorToHome() {
-        return homeElevator();
-    }
-
-    private boolean moveElevatorTo(ElevatorState target) {
-        if (!elevatorPositionKnown && !elevatorHomed()) return false;
-        return stepElevatorToward(target.steps, System.nanoTime());
     }
 
     public void stopActuators() {
@@ -158,9 +118,17 @@ public final class RobotHardware {
         rightback.setPower(0);
         step.setState(false);
         dir.setState(false);
-        servoLeft.setPosition(LiftingSequenceConfig.PLACE_LEFT);
-        servoRight.setPosition(LiftingSequenceConfig.PLACE_RIGHT);
-        pulseActive = false;
+        servoLeft.setPosition(config == null ? 0.25 : config.placeLeft);
+        servoRight.setPosition(config == null ? 0.75 : config.placeRight);
+    }
+
+    private long stepHighNs() { return config == null ? 1L : config.stepHighNs; }
+    private long stepLowNs() { return config == null ? 1L : config.stepLowNs; }
+
+    private static void busyWaitNs(long durationNs) {
+        if (durationNs <= 1L) return;
+        long deadline = System.nanoTime() + durationNs;
+        while (System.nanoTime() < deadline) { }
     }
 
     private static DigitalChannel input(HardwareMap map, String name) {

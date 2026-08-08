@@ -29,13 +29,9 @@ dependencies {
 }
 
 // Runs dependency-free policy assertions against compiled production classes.
-tasks.register('cameraContinuationTest', JavaExec) {
+tasks.register('piCdcPacketTest', JavaExec) {
     dependsOn 'compileDebugJavaWithJavac'
-    classpath = files(
-            "$buildDir/intermediates/javac/debug/compileDebugJavaWithJavac/classes",
-            "$rootProject.projectDir/FtcRobotController/build/intermediates/compile_library_classes_jar/debug/bundleLibCompileToJarDebug/classes.jar",
-            fileTree(System.getProperty('user.home') + '/.gradle/caches') { include '**/*.jar' }
-    )
-    mainClass = 'org.firstinspires.ftc.teamcode.test.CameraContinuationTest'
+    classpath = files("$buildDir/intermediates/javac/debug/compileDebugJavaWithJavac/classes")
+    mainClass = 'org.firstinspires.ftc.teamcode.test.PiCdcPacketTest'
     jvmArgs '-ea'
 }

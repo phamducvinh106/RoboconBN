@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "calibrated": false,
+  "points": {
+    "placeAtFactory": { "x": 50.0, "y": 10.0, "heading": 0.0 },
+    "shelfApproach": { "x": 120.0, "y": 80.0, "heading": 90.0 },
+    "retreat": { "x": 100.0, "y": 80.0, "heading": 90.0 }
+  },
+  "factories": [
+    {
+      "near": { "x": 100.0, "y": 40.0, "heading": 90.0 },
+      "placement": { "x": 120.0, "y": 40.0, "heading": 90.0 }
+    },
+    {
+      "near": { "x": 100.0, "y": 50.0, "heading": 90.0 },
+      "placement": { "x": 120.0, "y": 50.0, "heading": 90.0 }
+    },
+    {
+      "near": { "x": 100.0, "y": 60.0, "heading": 90.0 },
+      "placement": { "x": 120.0, "y": 60.0, "heading": 90.0 }
+    },
+    {
+      "near": { "x": 100.0, "y": 70.0, "heading": 90.0 },
+      "placement": { "x": 120.0, "y": 70.0, "heading": 90.0 }
+    }
+  ]
+}

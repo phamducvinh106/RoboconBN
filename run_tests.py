@@ -67,8 +67,7 @@ OFFLINE_CORE = (
     "LiftingSequenceConfig.java",
     "LiftingSequenceConfigLoader.java",
     "LiftingSequenceStateMachine.java",
-    "Pi5CameraSnapshot.java",
-    "Pi5PayloadDecoder.java",
+    "PiCdcPacket.java",
     "ReleaseBackoutSensorManager.java",
     "StepperElevatorManager.java",
 )
@@ -89,6 +88,18 @@ SUITES: tuple[Suite, ...] = (
         sources=("test/MultiTargetCameraTest.java",),
     ),
     Suite(
+        "pi-cdc-packet",
+        "java_offline",
+        "NDJSON packet parse/validate + dxPx conversion",
+        main_class="org.firstinspires.ftc.teamcode.test.PiCdcPacketTest",
+        sources=(
+            "core/PiCdcPacket.java",
+            "core/CameraFrameContract.java",
+            "core/CameraChannel.java",
+            "test/PiCdcPacketTest.java",
+        ),
+    ),
+    Suite(
         "lifting-hardware",
         "java_offline",
         "Manager contracts + Pi5 payload decode gates",
@@ -103,7 +114,24 @@ SUITES: tuple[Suite, ...] = (
         sources=(
             "core/LiftingSequenceConfig.java",
             "core/LiftingSequenceConfigLoader.java",
+            "core/FieldBlueConfig.java",
+            "core/FieldBlueConfigLoader.java",
+            "core/Alliance.java",
             "test/LiftingSequenceConfigTest.java",
+        ),
+    ),
+    Suite(
+        "field-blue",
+        "java_offline",
+        "Blue field coordinates + red factory slot reversal",
+        main_class="org.firstinspires.ftc.teamcode.test.FieldBlueConfigTest",
+        sources=(
+            "core/LiftingSequenceConfig.java",
+            "core/LiftingSequenceConfigLoader.java",
+            "core/FieldBlueConfig.java",
+            "core/FieldBlueConfigLoader.java",
+            "core/Alliance.java",
+            "test/FieldBlueConfigTest.java",
         ),
     ),
     Suite(
@@ -113,6 +141,10 @@ SUITES: tuple[Suite, ...] = (
         main_class="org.firstinspires.ftc.teamcode.test.LiftingSequenceTest",
         sources=(
             "core/LiftingSequenceConfig.java",
+            "core/LiftingSequenceConfigLoader.java",
+            "core/FieldBlueConfig.java",
+            "core/FieldBlueConfigLoader.java",
+            "core/Alliance.java",
             "core/LiftingSequenceStateMachine.java",
             "test/LiftingSequenceTest.java",
         ),
@@ -128,18 +160,6 @@ SUITES: tuple[Suite, ...] = (
         "java_ftc",
         "Mecanum kinematics + simulated goToPosition (needs FTC SDK)",
         main_class="org.firstinspires.ftc.teamcode.test.MecanumDriveTest",
-    ),
-    Suite(
-        "python-payload",
-        "python",
-        "Pi5 20-bit payload pack/unpack + block code mapping",
-        python_module="block_detected_for_pi.test_payload",
-    ),
-    Suite(
-        "python-frame-state",
-        "python",
-        "Pi5 logical frame heartbeat + snapshot",
-        python_module="block_detected_for_pi.test_frame_state",
     ),
     Suite(
         "python-cdc",

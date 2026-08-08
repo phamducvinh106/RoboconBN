@@ -1,11 +1,9 @@
-"""Pi 5 dual-camera targeting with USB CDC output for FTC Control Hub."""
+"""Pi5 dual-camera block detection package."""
 
-from .config import BlockCodeConfig
-from .payload import DecodedPayload, pack_payload, unpack_payload
+from .cdc_publisher import CdcPublisher
+from .types import Target
 
 __all__ = [
-    "BlockCodeConfig",
-    "DecodedPayload",
-    "pack_payload",
-    "unpack_payload",
+    "CdcPublisher",
+    "Target",
 ]

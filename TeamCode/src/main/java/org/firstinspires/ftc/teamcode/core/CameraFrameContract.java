@@ -39,7 +39,7 @@ public final class CameraFrameContract {
         this.valid = valid
                 && channelFound
                 && blockType != null
-                && Pi5PayloadDecoder.isValidBlockCode(blockCode)
+                && (blockCode < 0 || PiCdcPacket.isValidBlockCode(blockCode))
                 && dxOk;
         this.dxPx = this.valid ? dxPx : Double.NaN;
     }

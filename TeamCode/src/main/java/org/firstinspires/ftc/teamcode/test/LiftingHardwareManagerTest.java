@@ -18,18 +18,30 @@ public final class LiftingHardwareManagerTest {
         public boolean active() { return value; }
     }
 
+    static final class StubTransport implements HardwareContracts.CameraTransport {
+        public CameraFrameContract read(CameraChannel channel) {
+            return CameraFrameContract.invalid(channel, 0);
+        }
+    }
+
     public static void main(String[] args) {
+        S endU = new S();
+        StepperElevatorManager unhomed = new StepperElevatorManager(new B(), new B(), new EndstopManager(endU), 10, 10, 20);
+        endU.value = false;
+        check("unknown gate", !unhomed.moveToward(2, 0));
+
         S end = new S();
         B step = new B(), dir = new B();
         StepperElevatorManager lift = new StepperElevatorManager(step, dir, new EndstopManager(end), 10, 10, 20);
         end.value = true;
         check("home", lift.moveToward(0, 0));
         end.value = false;
-        check("unknown gate", !lift.moveToward(2, 0));
+        check("move blocking", lift.moveToward(2, 0) && lift.position() == 2);
         end.value = true;
         check("home reset", lift.moveToward(0, 1));
         end.value = false;
-        check("pulse", !lift.moveToward(1, 20));
+        check("pulse", lift.moveToward(1, 20));
+        check("position", lift.position() == 1);
         check("step low before dir", step.log.indexOf("01") >= 0);
 
         S left = new S(), right = new S();
@@ -43,15 +55,19 @@ public final class LiftingHardwareManagerTest {
         check("invalid camera stop", !invalid.authorizesMovement(10, 100));
         check("explicit channels", CameraChannel.WEBCAM2.identity.equals("webcam2"));
 
-        int payload = Pi5PayloadDecoder.composePayload(128, 64, 1, 2);
-        Pi5PayloadDecoder.Decoded decoded = Pi5PayloadDecoder.decode(payload);
-        check("decode x", decoded.x == 128);
-        check("decode y", decoded.y == 64);
-        check("decode left", decoded.leftCode == 1);
-        check("decode right", decoded.rightCode == 2);
+        long receivedNs = 1_000_000L;
+        PiCdcPacket.Frame frame = PiCdcPacket.parse(
+                "{\"v\":1,\"hb\":1,\"frame_valid\":true,"
+                        + "\"left\":{\"camera\":\"left\",\"found\":true,\"block_type\":1,\"class_name\":\"02\","
+                        + "\"confidence\":0.9,\"x\":0.4,\"y\":0.5},"
+                        + "\"right\":{\"camera\":\"right\",\"found\":false,\"block_type\":-1,\"class_name\":\"\","
+                        + "\"confidence\":0.0,\"x\":0.0,\"y\":0.0}}",
+                receivedNs);
+        check("cdc frame valid", frame.valid);
+        check("cdc dxPx", Math.abs(PiCdcPacket.dxPx(0.4, 640) + 64.0) < 0.01);
 
-        CameraAdapterManager cameras = new CameraAdapterManager(new PlaceholderCameraTransport(), 100);
-        check("placeholder invalid", !cameras.movementAuthorized(CameraChannel.WEBCAM1, 50));
+        CameraAdapterManager cameras = new CameraAdapterManager(new StubTransport(), 100);
+        check("stub invalid", !cameras.movementAuthorized(CameraChannel.WEBCAM1, 50));
 
         ForkServoManager fork = new ForkServoManager((v) -> {}, (v) -> {}, .2, .8, .5, .5);
         fork.setPose(ForkServoManager.Pose.HOLD);
