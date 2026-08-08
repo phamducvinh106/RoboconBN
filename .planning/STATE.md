@@ -69,9 +69,10 @@ Run `/gsd-plan-phase 6` to create executable plans for bounded automatic PID tun
 | # | Description | Date | Directory |
 |---|-------------|------|-----------|
 | 260808-5az | ORB v2: merge geometry verification temporal gates into OrbTemplateCamera | 2026-08-08 | [260808-5az-orb-v2-merge-geometry-verification-tempo](./quick/260808-5az-orb-v2-merge-geometry-verification-tempo/) |
+| 260808-cuy | Camera chỉ xác định loại block; xóa căn ngang và calibration | 2026-08-08 | [260808-cuy-b-y-gi-camera-ch-c-d-ng-x-c-nh-lo-i-bloc](./quick/260808-cuy-b-y-gi-camera-ch-c-d-ng-x-c-nh-lo-i-bloc/) |
 
 ## Session
 
 **Last session:** 2026-08-08
-**Stopped at:** Quick task 260808-5az complete
+**Stopped at:** Quick task 260808-cuy complete
 **Resume file:** None
