@@ -43,8 +43,8 @@ public final class LiftingSequenceConfig {
     public final double releaseBackOutCm, positionToleranceCm, headingToleranceDeg, encoderFreshnessNs, noProgressCm;
     public final boolean endstopActiveLow, irActiveLow;
     public final String webcam1Identity, webcam2Identity;
-    public final double scanSpeed, centerSpeed, approachSpeed, centerDeadbandPx;
-    public final int cameraFrameWidth, cameraFrameHeight, centerStableFrames;
+    public final double approachSpeed;
+    public final int cameraFrameWidth, cameraFrameHeight;
     public final Pose shelfApproach, retreat, placeAtFactory;
     public final String[] blockTypesByCode;
     public final Map<String, Factory> factories;
@@ -81,13 +81,9 @@ public final class LiftingSequenceConfig {
         irActiveLow = b.get("irActiveLow");
         webcam1Identity = "webcam1";
         webcam2Identity = "webcam2";
-        scanSpeed = n.get("scanSpeed");
-        centerSpeed = n.get("centerSpeed");
         approachSpeed = n.get("approachSpeed");
-        centerDeadbandPx = n.get("centerDeadbandPx");
         cameraFrameWidth = n.get("frameWidth").intValue();
         cameraFrameHeight = n.get("frameHeight").intValue();
-        centerStableFrames = n.get("centerStableFrames").intValue();
         this.placeAtFactory = placeAtFactory;
         this.shelfApproach = shelfApproach;
         this.retreat = retreat;
@@ -161,13 +157,9 @@ public final class LiftingSequenceConfig {
         n.put("headingToleranceDeg", headingToleranceDeg);
         n.put("encoderFreshnessNs", encoderFreshnessNs);
         n.put("noProgressCm", noProgressCm);
-        n.put("scanSpeed", scanSpeed);
-        n.put("centerSpeed", centerSpeed);
         n.put("approachSpeed", approachSpeed);
-        n.put("centerDeadbandPx", centerDeadbandPx);
         n.put("frameWidth", (double) cameraFrameWidth);
         n.put("frameHeight", (double) cameraFrameHeight);
-        n.put("centerStableFrames", (double) centerStableFrames);
         return n;
     }
 

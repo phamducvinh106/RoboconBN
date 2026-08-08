@@ -18,8 +18,7 @@ public final class LiftingSequenceConfigLoader {
             "homeSteps", "ready1Steps", "lift1Steps", "ready2Steps", "lift2Steps",
             "maxRetries", "settleCycles", "totalCycles",
             "releaseBackOutCm", "positionToleranceCm", "headingToleranceDeg", "encoderFreshnessNs", "noProgressCm",
-            "scanSpeed", "centerSpeed", "approachSpeed", "centerDeadbandPx", "centerStableFrames",
-            "frameWidth", "frameHeight"
+            "approachSpeed", "frameWidth", "frameHeight"
     };
 
     private LiftingSequenceConfigLoader() {}
@@ -76,11 +75,7 @@ public final class LiftingSequenceConfigLoader {
         range(numbers, "headingToleranceDeg", 0.01, 360);
         range(numbers, "encoderFreshnessNs", 1, 1e12);
         range(numbers, "noProgressCm", 0.01, 100);
-        range(numbers, "scanSpeed", 0.01, 1);
-        range(numbers, "centerSpeed", 0.01, 1);
         range(numbers, "approachSpeed", 0.01, 1);
-        range(numbers, "centerDeadbandPx", 1, 200);
-        range(numbers, "centerStableFrames", 1, 30);
         range(numbers, "frameWidth", 32, 4096);
         range(numbers, "frameHeight", 32, 4096);
 

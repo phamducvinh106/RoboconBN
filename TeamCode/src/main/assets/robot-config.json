@@ -25,13 +25,9 @@
   },
   "camera": {
     "frameWidth": 640,
-    "frameHeight": 480,
-    "centerDeadbandPx": 8,
-    "centerStableFrames": 3
+    "frameHeight": 480
   },
   "motion": {
-    "scanSpeed": 0.2,
-    "centerSpeed": 0.15,
     "approachSpeed": 0.1,
     "positionToleranceCm": 1.0,
     "headingToleranceDeg": 3.0,

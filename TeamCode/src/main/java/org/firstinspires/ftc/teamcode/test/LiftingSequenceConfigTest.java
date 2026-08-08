@@ -24,8 +24,8 @@ public final class LiftingSequenceConfigTest {
         check("fingerprint", c.fingerprint.length() == 8);
         check("identities", c.webcam1Identity.equals("webcam1") && c.webcam2Identity.equals("webcam2"));
         check("camera width", c.cameraFrameWidth == 640);
-        check("center deadband", c.centerDeadbandPx == 8);
-        check("center stable frames", c.centerStableFrames == 3);
+        check("camera height", c.cameraFrameHeight == 480);
+        check("camera freshness", c.sensorStaleNs == 250000000);
         rejects("missing", json.replace("\"lift2Steps\": 5625,", ""));
         rejects("wrong version", json.replace("\"version\": 1", "\"version\": 2"));
         rejects("range", json.replace("\"centerSpeed\": 0.15", "\"centerSpeed\": 2"));
