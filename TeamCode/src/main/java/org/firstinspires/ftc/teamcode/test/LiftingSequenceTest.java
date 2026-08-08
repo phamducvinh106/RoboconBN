@@ -94,13 +94,6 @@ public final class LiftingSequenceTest {
         boolean rightFresh = true;
         String leftType = "01";
         String rightType = "02";
-        double dxPx = 0;
-        int stableTicks;
-
-        void tickStable() {
-            if (leftValid && leftFresh && Math.abs(dxPx) <= 8) stableTicks++;
-            else stableTicks = 0;
-        }
 
         public boolean leftFresh(long nowNs) {
             return leftFresh;
@@ -116,14 +109,6 @@ public final class LiftingSequenceTest {
 
         public boolean rightValid() {
             return rightValid;
-        }
-
-        public boolean stableLeftTarget() {
-            return stableTicks >= 3;
-        }
-
-        public double leftDxPx() {
-            return dxPx;
         }
 
         public String leftBlockType() {
@@ -220,7 +205,6 @@ public final class LiftingSequenceTest {
         LiftingSequenceStateMachine machine = new LiftingSequenceStateMachine(clock, actuators, cam, config());
         machine.setIrState(true, true);
         for (int i = 0; i < 140 && machine.getCompletedCycles() == 0; i++) {
-            cam.tickStable();
             clock.n += LiftingSequenceConfig.IR_DEBOUNCE_NS;
             actuators.poseX += 5;
             actuators.poseY += 5;
@@ -239,7 +223,6 @@ public final class LiftingSequenceTest {
         machine.setIrState(true, true);
         for (int i = 0; i < 120
                 && machine.getState() != LiftingSequenceStateMachine.State.BACK_OUT_AFTER_LEFT_RELEASE_20CM; i++) {
-            cam.tickStable();
             clock.n += LiftingSequenceConfig.IR_DEBOUNCE_NS;
             machine.tick();
         }

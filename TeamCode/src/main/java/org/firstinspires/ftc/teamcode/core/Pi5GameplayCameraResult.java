@@ -6,7 +6,6 @@ public final class Pi5GameplayCameraResult implements LiftingSequenceStateMachin
     private final LiftingSequenceConfig config;
     private CameraFrameContract left = CameraFrameContract.invalid(CameraChannel.WEBCAM1, 0);
     private CameraFrameContract right = CameraFrameContract.invalid(CameraChannel.WEBCAM2, 0);
-    private int stableFrames;
 
     public Pi5GameplayCameraResult(CameraAdapterManager cameras, LiftingSequenceConfig config) {
         if (cameras == null || config == null) throw new IllegalArgumentException("missing camera dependencies");
@@ -17,11 +16,6 @@ public final class Pi5GameplayCameraResult implements LiftingSequenceStateMachin
     public void update(long nowNs) {
         left = cameras.reading(CameraChannel.WEBCAM1);
         right = cameras.reading(CameraChannel.WEBCAM2);
-        if (leftValid() && leftFresh(nowNs) && Math.abs(left.dxPx) <= config.centerDeadbandPx) {
-            stableFrames++;
-        } else {
-            stableFrames = 0;
-        }
     }
 
     @Override
@@ -42,16 +36,6 @@ public final class Pi5GameplayCameraResult implements LiftingSequenceStateMachin
     @Override
     public boolean rightValid() {
         return right.valid;
-    }
-
-    @Override
-    public boolean stableLeftTarget() {
-        return stableFrames >= config.centerStableFrames;
-    }
-
-    @Override
-    public double leftDxPx() {
-        return left.dxPx;
     }
 
     @Override

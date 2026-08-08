@@ -3,8 +3,8 @@ package org.firstinspires.ftc.teamcode.core;
 public final class LiftingSequenceStateMachine {
     public enum State {
         START, HOMING, SET_PLACE, PLACE_AT_FACTORY, MOVE_TO_SHELF, SELECT_LEVEL, READY1_PUSH, READY1, READY2,
-        SCAN_RIGHT, SCAN_LEFT, CENTER_LEFT_SLOW, APPROACH_IR_SLOW, CONFIRM_IR, SAVE_SHELF_POSE,
-        CALIBRATE_SHELF_COORDINATE, LIFT1, LIFT2, BACK_OUT_FROM_SHELF, HOLD, MOVE_NEAR_FACTORY_LEFT,
+        SCAN_RIGHT, APPROACH_IR_SLOW, CONFIRM_IR, SAVE_SHELF_POSE, LIFT1, LIFT2,
+        BACK_OUT_FROM_SHELF, HOLD, MOVE_NEAR_FACTORY_LEFT,
         PLACE_LEFT, READY1_LEFT, MOVE_TO_PLACEMENT_LEFT, HOME_LEFT, BACK_OUT_AFTER_LEFT_RELEASE_20CM,
         RIGHT_RE_LIFT, MOVE_NEAR_FACTORY_RIGHT, PLACE_RIGHT, READY1_RIGHT, MOVE_TO_PLACEMENT_RIGHT,
         HOME_RIGHT, BACK_OUT_AFTER_RIGHT_RELEASE_20CM, CYCLE_COMPLETE, SAFE_STOP
@@ -36,8 +36,6 @@ public final class LiftingSequenceStateMachine {
         boolean rightFresh(long nowNs);
         boolean leftValid();
         boolean rightValid();
-        boolean stableLeftTarget();
-        double leftDxPx();
         String leftBlockType();
         String rightBlockType();
     }
@@ -215,22 +213,7 @@ public final class LiftingSequenceStateMachine {
             case SCAN_RIGHT:
                 if (dualScanReady(now)) {
                     setBlockTypes(camera.leftBlockType(), camera.rightBlockType());
-                    transition(State.CENTER_LEFT_SLOW);
-                }
-                break;
-            case SCAN_LEFT:
-                transition(State.CENTER_LEFT_SLOW);
-                break;
-            case CENTER_LEFT_SLOW:
-                if (!leftCenteringOk(now)) {
-                    actuators.stopDrive();
-                    safeStop(FailureCode.CAMERA_STALE);
-                } else if (camera.stableLeftTarget()) {
-                    actuators.stopDrive();
                     transition(State.APPROACH_IR_SLOW);
-                } else {
-                    double speed = centerSpeed();
-                    actuators.drive(0, camera.leftDxPx() > 0 ? -speed : speed);
                 }
                 break;
             case APPROACH_IR_SLOW:
@@ -256,9 +239,6 @@ public final class LiftingSequenceStateMachine {
                     break;
                 }
                 shelfPose = new ShelfPose(shelf, level, pose.x, pose.y, pose.heading, now);
-                transition(State.CALIBRATE_SHELF_COORDINATE);
-                break;
-            case CALIBRATE_SHELF_COORDINATE:
                 transition(level == 1 ? State.LIFT1 : State.LIFT2);
                 break;
             case LIFT1:
@@ -378,10 +358,6 @@ public final class LiftingSequenceStateMachine {
         return config == null ? LiftingSequenceConfig.IR_DEBOUNCE_NS : config.irDebounceNs;
     }
 
-    private double centerSpeed() {
-        return config == null ? 0.08 : config.centerSpeed;
-    }
-
     private double approachSpeed() {
         return config == null ? 0.08 : config.approachSpeed;
     }
@@ -392,10 +368,6 @@ public final class LiftingSequenceStateMachine {
         String right = camera.rightBlockType();
         return camera.leftValid() && camera.leftFresh(nowNs) && camera.rightValid()
                 && camera.rightFresh(nowNs) && knownFactory(left) && knownFactory(right);
-    }
-
-    private boolean leftCenteringOk(long nowNs) {
-        return camera != null && camera.leftValid() && camera.leftFresh(nowNs);
     }
 
     private boolean knownFactory(String type) {
