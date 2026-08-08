@@ -1,4 +1,4 @@
-"""Pi 5 dual-camera targeting with UART output for FTC Control Hub."""
+"""Pi 5 dual-camera targeting with USB CDC output for FTC Control Hub."""
 
 from .config import BlockCodeConfig
 from .payload import DecodedPayload, pack_payload, unpack_payload

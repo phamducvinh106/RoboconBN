@@ -1,0 +1,387 @@
+RBC BNMR 2026 – ROBOT CONTEXT CHO BẢNG O2
+==========================================
+
+MỤC TIÊU
+- Robot tự động thi bảng O2 “Khát vọng công nghệ”.
+- Thời gian trận: tối đa 240 giây.
+- Nhiệm vụ chính: nhận diện kiện hàng bằng Camera AI, nâng pallet, vận chuyển đến đúng nhà máy.
+- Nhiệm vụ 2 chỉ được chạy sau khi hoàn thành 100% nhiệm vụ 1.
+- Không điều khiển trực tiếp robot sau khi bấm Start.
+
+LUẬT KỸ THUẬT BẮT BUỘC
+- 1 robot/đội, 1 bộ điều khiển.
+- Kích thước lúc xuất phát không vượt quá 400 x 400 x 400 mm.
+- Sau khi xuất phát được phép mở rộng.
+- Tổng số động cơ, gồm servo, không quá 12.
+- Bộ điều khiển tối đa 16 cổng vào/ra.
+- Điện áp định mức không quá 12 V; pin không quá 5000 mAh.
+- Camera AI phải nối trực tiếp bộ điều khiển; xử lý ảnh bằng thư viện cục bộ; không Internet, không máy tính/điện thoại ngoài.
+- Không khung kim loại; chỉ được dùng kim loại cho ốc vít, bu lông, đinh tán và phần phụ trợ hợp lệ.
+- Không bộ phận nguy hiểm, không làm hỏng sa bàn, không lấn sân đối phương.
+- Không nạp dữ liệu/chương trình để xác định vị trí kiện hàng sau khi robot đã nộp kiểm tra.
+
+PHẦN CỨNG HIỆN CÓ
+Bộ điều khiển: REV Control Hub
+
+Di chuyển:
+- Mecanum drivetrain:
+  - leftfront
+  - leftback
+  - rightfr++++++++t
+  - rightback
+- GoBilda 4-bar odometry:
+  - strafe: rightfront
+  - forward: leftfront
+
+Cơ cấu hàng hóa:
+- servoLeft, servoRight: hai servo điều khiển hai lưỡi fork.
+- Fork gắn trên một thang máy dạng extrusion + bộ con trượt.
+- Motor bước:
+  - step: tạo bước
+  - dir: điều khiển chiều quay
+- endstop1: xác định vị trí gốc/thấp nhất của thang máy.
+- Cần dùng fork nâng pallet từ dưới lên theo quy tắc xe nâng.
+- Cần giữ pallet ổn định khi di chuyển và đặt xuống.
+
+Cảm biến và xử lý ảnh:
+- webcam1: gắn fork trái
+- webcam 2: gắn fork phải
+- Xử lí hình ảnh bằng rasperry pi 5, giao tiếp I2C
+- 8bit toạ độ x (L), 8bit toạ độ y(L), 2bit loại block của cam(L), 2bit loại block cam(R)
+- leftIR, rightIR: cảm biến hồng ngoại tiệm cận; chỉ xác nhận kiện hàng đã vào vị trí sẵn sàng di chuyển, không thay thế Camera AI.
+
+TRẠNG THÁI CƠ CẤU GẮP
+- PLACE: fork/servo song song với mặt đất; dùng khi đặt hoặc thả kiện.
+- HOLD: fork/servo vuông góc với mặt đất; dùng khi giữ kiện.
+- Cần hiệu chuẩn góc servo thực tế trước khi chạy trận.
+
+ĐỀ O2 – SA BÀN VÀ KIỆN HÀNG
+- Mỗi phần sân có vùng xuất phát 400 x 400 mm.
+- Khu kho hải quan có 3 vị trí kệ hàng.
+- Có 1 vị trí kho hàng rời.
+- Mỗi kệ chứa pallet ở tầng 1 hoặc tầng 2.
+- Một kiện hàng gồm pallet 90 x 90 x 26 mm và khối hàng phía trên.
+- Khối hàng 40 x 40 x 40 mm, ảnh nhận dạng dán trên cả 6 mặt.
+- Có 12 kiện hàng trong nhiệm vụ 1.
+- Vị trí kiện hàng được trọng tài bốc thăm trước trận, giống nhau cho các đội.
+- 4 loại kiện hàng:
+  - Kiện 01 -> nhà máy Samsung
+  - Kiện 02 -> nhà máy Foxconn
+  - Kiện 03 -> nhà máy Amkor
+  - Kiện 04 -> nhà máy Hana Micron Vina
+- Nhà máy đích: vùng 250 x 250 mm.
+- Kiện phải nằm hoàn toàn trong vùng nhà máy, pallet song song mặt sa bàn, không nghiêng/ngã.
+- Có thể xếp chồng kiện nếu vẫn hợp lệ.
+- Kho hàng rời có 1 pallet chứa 4 loại hàng khác nhau; đưa đến nhà máy liên hợp sau khi hoàn thành nhiệm vụ 1.
+
+ĐIỂM
+- Nhiệm vụ 1: 20 điểm/kiện đặt đúng nhà máy; tối đa 240 điểm.
+- Nhiệm vụ 2: 30 điểm cho kiện kho hàng rời đặt đúng nhà máy liên hợp.
+- Tổng điểm nhiệm vụ tối đa theo đề: 270 điểm.
+- Reset: tối đa 5 lần, mỗi lần trừ 10 điểm.
+- Kiện đã đặt đúng vẫn giữ nguyên điểm/vị trí sau reset.
+
+CHIẾN LƯỢC ROBOT
+1. Khởi tạo REV Control Hub, motor, servo, camera, IR và odometry.
+2. Homing elevator bằng endstop1; nếu thất bại thì dừng an toàn.
+3. Chờ lệnh BẮT ĐẦU, kiểm tra timer liên tục và chỉ chạy khi timer < 240 s.
+4. Di chuyển đến vị trí kho hàng 1 theo tọa độ được cấu hình.
+5. Đưa elevator đến READY1, nhích robot về phía trước và đẩy fork vào pallet.
+6. Đưa elevator đến LIFT1, đọc leftIR/rightIR xác nhận pallet đã được nâng.
+7. Nếu IR không xác nhận: không tiếp tục di chuyển; điều chỉnh hoặc bỏ qua kiện.
+8. Lùi robot khỏi kệ, chuyển fork sang HOLD.
+9. Đọc loại block bằng camera; ưu tiên đưa block trên fork trái đến nhà máy trước.
+10. Chọn tọa độ nhà máy theo loại block và cấu hình JSON.
+11. Di chuyển, căn chỉnh bằng odometry + camera, rồi PLACE pallet.
+12. Tiến lên phía trước một chút, đưa elevator về HOME, lùi đến khi block rời fork.
+13. Ghi nhận kiện hoàn thành, kiểm tra timer và tiếp tục kệ kế tiếp.
+14. Lặp quy trình với kệ hàng 2 và kệ hàng 3; mỗi kệ dùng tọa độ cấu hình riêng.
+15. Chỉ khi đủ 12 kiện nhiệm vụ 1 và còn thời gian: di chuyển đến kho liên hợp.
+16. Đưa elevator về HOME, PLACE để đưa fork vào pallet, rồi nâng đến LIFT1 và chuyển sang HOLD.
+17. Di chuyển đến nhà máy liên hợp, PLACE trong vùng 250 x 250 mm.
+18. Đưa elevator về HOME, lùi robot và đọc IR xác nhận block đã rời fork.
+19. Dừng an toàn trước khi hết 240 giây.
+
+FLOWCHART HOẠT ĐỘNG
+====================
+[START]
+   |
+   v
+[Khởi tạo REV Control Hub, motor, servo, camera, IR, odometry]
+   |
+   v
+[Homing elevator bằng endstop1]
+   | Thất bại
+   +------------------> [Dừng an toàn]
+   |
+   v
+[Chờ lệnh BẮT ĐẦU]
+   |
+   v
+[Đọc timer; timer < 240 s?]
+   | Không
+   +------------------> [Dừng, kết thúc trận]
+   |
+  Có
+   |
+   v
+[Di chuyển đến vị trí kho hàng 1 theo tọa độ cấu hình]
+   |
+   v
+[Elevator ở READY1]
+   |
+   v
+[Robot nhích về phía trước một chút]
+   |
+   v
+[Đẩy fork vào pallet hàng]
+   |
+   v
+[Elevator ở LIFT1]
+   |
+   v
+[Đọc IR sensor xác nhận đã nâng được pallet]
+   | Không xác nhận
+   +------------------> [Điều chỉnh lại hoặc bỏ qua kiện]
+   |
+  Đã xác nhận
+   |
+   v
+[Lùi lại khỏi vị trí lấy hàng]
+   |
+   v
+[HOLD]
+   |
+   v
+[Đọc timer; timer < 240 s?]
+   | Không
+   +------------------> [Dừng, kết thúc trận]
+   |
+  Có
+   |
+   v
+[Block thuộc fork trái hay fork phải?]
+   | Fork trái
+   +------------------> [Ưu tiên đưa block fork trái trước]
+   |
+  Fork phải
+   |
+   v
+[Chọn nhà máy đích theo loại block]
+   |
+   v
+[Đọc tọa độ nhà máy từ cấu hình]
+   |
+   v
+[Di chuyển đến nhà máy đích]
+   |
+   v
+[Căn chỉnh pallet bằng odometry + camera]
+   | Không ổn định
+   +------------------> [Điều chỉnh lại hoặc bỏ qua kiện]
+   |
+  Ổn định
+   |
+   v
+[PLACE]
+   |
+   v
+[Tiến lên phía trước một chút]
+   |
+   v
+[Elevator ở HOME]
+   |
+   v
+[Lùi lại đến khi block rời fork]
+   |
+   v
+[Ghi nhận kiện hoàn thành]
+   |
+   v
+[Đọc timer; timer < 240 s?]
+   | Không
+   +------------------> [Dừng, kết thúc trận]
+   |
+  Có
+   |
+   v
+[Đã hoàn thành đủ 12 kiện nhiệm vụ 1?]
+   | Chưa
+   +------------------> [Đi đến kệ hàng tiếp theo]
+   |                       (kệ 2 rồi kệ 3; tọa độ cấu hình riêng)
+   |
+  Đủ
+   |
+   v
+[Timer < 240 s?]
+   | Không
+   +------------------> [Dừng, kết thúc trận]
+   |
+  Có
+   |
+   v
+[Di chuyển đến kho liên hợp]
+   |
+   v
+[Elevator ở HOME]
+   |
+   v
+[PLACE để đưa fork vào pallet tổng hợp]
+   |
+   v
+[Tiến lên để đưa fork vào pallet]
+   |
+   v
+[Elevator ở LIFT1]
+   |
+   v
+[HOLD pallet tổng hợp]
+   |
+   v
+[Đọc timer; timer < 240 s?]
+   | Không
+   +------------------> [Hạ pallet an toàn -> Dừng, kết thúc trận]
+   |
+  Có
+   |
+   v
+[Di chuyển đến nhà máy liên hợp]
+   |
+   v
+[Căn chỉnh pallet bằng odometry + camera]
+   | Không ổn định
+   +------------------> [Điều chỉnh lại hoặc dừng an toàn]
+   |
+  Ổn định
+   |
+   v
+[PLACE trong vùng 250 x 250 mm]
+   |
+   v
+[Elevator ở HOME]
+   |
+   v
+[Lùi lại khỏi pallet]
+   |
+   v
+[Đọc IR sensor xác nhận block đã rời fork]
+   | Chưa rời
+   +------------------> [Lùi thêm hoặc điều chỉnh vị trí]
+   |
+  Đã rời
+   |
+   v
+[Dừng an toàn trước hết giờ]
+   |
+   v
+[END]
+
+LOGIC LỖI VÀ AN TOÀN
+- Nếu mất camera: dừng cơ cấu nâng, không tự đoán loại kiện.
+- Nếu mất odometry hoặc robot lệch lớn: dừng, tránh lấn sân.
+- Nếu endstop1 không kích hoạt khi homing: không chạy nhiệm vụ.
+- Nếu IR không xác nhận kiện ổn định: không nâng hoặc hạ tốc độ để kiểm tra.
+- Nếu pallet nghiêng/ngã: giữ cơ cấu, không chạy nhanh; chuyển sang quy trình phục hồi.
+- Nếu kẹt: dừng motor bước, lùi cơ cấu theo giới hạn an toàn.
+- Không để fork vượt vùng cấm hoặc va vào kệ.
+- Theo dõi timer liên tục; bỏ nhiệm vụ 2 nếu không còn đủ thời gian.
+
+MISMATCH CẦN XÁC NHẬN TRƯỚC KHI CODE
+- Mô tả phần cứng hiện tại nói “fork gắp” và servo PLACE/HOLD, nhưng luật O2 yêu cầu nâng pallet như xe nâng.
+- Cần xác nhận fork hiện tại có thể luồn dưới pallet 90 x 90 mm và nâng kiện tổng khối lượng thực tế.
+- Cần xác nhận góc PLACE/HOLD, chiều dương step/dir, tỉ số bước/mm và giới hạn hành trình.
+- Cần xác nhận webcam1 có đủ góc nhìn để nhận diện ảnh trên 6 mặt khi kiện ở tầng 1/tầng 2.
+- Cần xác nhận tên cổng REV Control Hub trong code FTC hiện tại.
+- Cần xác nhận tọa độ tuyệt đối các kệ và nhà máy trên sa bàn trước khi viết autonomous.
+
+NGUYÊN TẮC CHO VIBECODE
+- Không tự bịa tọa độ, góc servo, bước/mm, tốc độ hoặc ngưỡng OpenCV.
+- Tách code thành state machine: INIT, HOME, SCAN, APPROACH, PICK, LIFT, DELIVER, PLACE, VERIFY, NEXT, FAILSAFE.
+- Mọi chuyển động phải có timeout, giới hạn tốc độ và điều kiện dừng.
+- Camera nhận diện loại kiện; odometry điều hướng; IR xác nhận vị trí cơ khí.
+- Ưu tiên hoàn thành chắc nhiệm vụ 1 trước nhiệm vụ 2.
+- Code phải chạy offline, không gọi Internet.
+- Không đổi tên hardware map hiện có nếu chưa kiểm tra code.
+- Một step của stepper bằng 0,032mm, tính từ home-> mốc độ cao: 
+   +home: thấp nhất, có một công tắc hành trình nếu nhận đc tín hiệu bật thì tức là elevator ở h
+   +ready1: 27mm-844step
+   +lift1: 57mm-1781step
+   +ready2: 150mm-4688step
+   +lift2: 180mm-5625step
+
+NGUỒN
+- Mô tả robot: TeamCode/.../mô tả robot.txt
+- Thể lệ: Thể lệ RBC BNMR 2026 – Tranh Cúp Foxconn, Phụ lục 01 và Phụ lục 03.
+
+HƯỚNG DẪN PI 5 GỬI DỮ LIỆU QUA I2C
+====================================
+
+File code:
+- block_detected-main/scripts/SendI2C.py
+
+Tài liệu đầy đủ:
+- block_detected-main/docs/i2c-rev-control-hub.md
+
+FORMAT FRAME I2C
+- Mỗi frame gồm 3 byte.
+- Byte 0: tọa độ x của camera trái, unsigned 8-bit, phạm vi 0..255.
+- Byte 1: tọa độ y của camera trái, unsigned 8-bit, phạm vi 0..255.
+- Byte 2: mã loại block được đóng gói:
+  - bit 0..1: loại block camera trái.
+  - bit 2..3: loại block camera phải.
+  - bit 4..7: dự phòng, gửi 0.
+
+MÃ LOẠI BLOCK
+- 0: unknown.
+- 1: block_1.
+- 2: block_2.
+- 3: block_3.
+
+CÀI I2C TRÊN RASPBERRY PI 5
+
+1. Bật I2C:
+   sudo raspi-config
+   Interface Options -> I2C -> Enable -> Finish
+
+2. Khởi động lại:
+   sudo reboot
+
+3. Cài công cụ và thư viện:
+   sudo apt update
+   sudo apt install -y i2c-tools python3-pip python3-venv
+   python3 -m venv .venv
+   . .venv/bin/activate
+   python -m pip install smbus2
+
+4. Kiểm tra I2C:
+   ls -l /dev/i2c-*
+   lsmod | grep i2c
+   sudo i2cdetect -y 1
+
+NỐI DÂY
+- Pi SDA GPIO2, pin 3 -> SDA thiết bị nhận.
+- Pi SCL GPIO3, pin 5 -> SCL thiết bị nhận.
+- Pi GND, pin 6 -> GND thiết bị nhận.
+- Không nối 5V Pi trực tiếp vào Control Hub.
+- Pi dùng logic 3.3V. Xác minh mức logic, pull-up và vai trò bus trước khi cấp nguồn.
+
+CHẠY TEST
+Từ thư mục block_detected-main:
+
+python scripts/SendI2C.py --bus 1 --address 0x42 --x 128 --y 120 --left-type block_1 --right-type block_2
+
+Gửi lặp 20 Hz:
+
+python scripts/SendI2C.py --bus 1 --address 0x42 --x 128 --y 120 --left-type block_1 --right-type block_2 --repeat-ms 50
+
+QUY ĐỔI TỌA ĐỘ TỪ 640x480 SANG 8-BIT
+- x8 = round(x_pixel * 255 / 639)
+- y8 = round(y_pixel * 255 / 479)
+
+CẢNH BÁO REV CONTROL HUB
+- Script Pi hoạt động ở vai trò I2C controller/master.
+- REV Control Hub FTC thông thường không mặc định là I2C target/slave nhận frame tùy ý.
+- Địa chỉ 0x42 chỉ là địa chỉ mẫu, không phải địa chỉ mặc định của Control Hub.
+- Phải xác nhận firmware/hardware Hub hỗ trợ I2C target/slave trước khi nối trực tiếp.
+- Nếu Hub không hỗ trợ slave, dùng MCU bridge có I2C slave hoặc giao tiếp khác mà Hub hỗ trợ.
+- Không đấu dây khi chưa xác nhận điện áp, pull-up và vai trò master/slave.

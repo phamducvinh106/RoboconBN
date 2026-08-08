@@ -43,6 +43,13 @@ public final class LiftingHardwareManagerTest {
         check("invalid camera stop", !invalid.authorizesMovement(10, 100));
         check("explicit channels", CameraChannel.WEBCAM2.identity.equals("webcam2"));
 
+        int payload = Pi5PayloadDecoder.composePayload(128, 64, 1, 2);
+        Pi5PayloadDecoder.Decoded decoded = Pi5PayloadDecoder.decode(payload);
+        check("decode x", decoded.x == 128);
+        check("decode y", decoded.y == 64);
+        check("decode left", decoded.leftCode == 1);
+        check("decode right", decoded.rightCode == 2);
+
         CameraAdapterManager cameras = new CameraAdapterManager(new PlaceholderCameraTransport(), 100);
         check("placeholder invalid", !cameras.movementAuthorized(CameraChannel.WEBCAM1, 50));
 

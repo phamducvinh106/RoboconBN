@@ -221,7 +221,7 @@ TeamCode/src/main/assets/phase2-lifting-config.json
 |--------------|-------|-----------|
 | Camera + Odometry Modular | `CameraOdometryMain` | Debug camera + pose cùng lúc |
 | Lifting Hardware Communication Test | `LiftingHardwareTestOpMode` | Test thang máy, fork, IR có nói chuyện với nhau không |
-| Pi5 UART Communication Test | `Pi5UartCommTestOpMode` | **Test link Pi→Hub UART** — chỉ cần `pi5UartRx`, không cần motor/servo |
+| Pi USB CDC Communication Test | `PiCdcCommTestOpMode` | **Test link Pi→Hub USB CDC** — không cần motor/servo |
 | Left Camera Centering Test | `LeftCameraCenteringTestOpMode` | Test `SINGLE_TARGET` căn giữa |
 | Right Camera Sticker Classification Test | `RightCameraClassificationTestOpMode` | Test `MULTI_TARGET` nhận diện sticker |
 | Left Color Centering Test | `LeftColorCenteringTestOpMode` | Căn giữa bằng màu (thử nghiệm) |
