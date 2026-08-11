@@ -1,14 +1,5 @@
 #!/usr/bin/env python3
-"""Unified test runner for RoboconBN — run with parameters only.
-
-Examples:
-  python run_tests.py --all
-  python run_tests.py --suite lifting-hardware
-  python run_tests.py --java
-  python run_tests.py --python
-  python run_tests.py --list
-  python run_tests.py --gradle
-"""
+"""Unified test runner for RoboconBN drawing robot."""
 
 from __future__ import annotations
 
@@ -25,13 +16,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 JAVA_SRC = ROOT / "TeamCode" / "src" / "main" / "java"
 CORE = JAVA_SRC / "org" / "firstinspires" / "ftc" / "teamcode" / "core"
+CORE_DRIVE = CORE / "drive"
+CORE_ODOMETRY = CORE / "odometry"
+CORE_PEN = CORE / "pen"
 TEST = JAVA_SRC / "org" / "firstinspires" / "ftc" / "teamcode" / "test"
 BUILD = ROOT / "build" / "test-runner"
 PASS_RE = re.compile(r"RESULT:\s*(\d+)\s+passed,\s*(\d+)\s+failed", re.I)
 
 
 def _bootstrap_toolchain() -> None:
-    """Use Homebrew OpenJDK and Android SDK when not already configured."""
     if not _java_tool_ok("java"):
         brew_java = Path("/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home")
         if (brew_java / "bin" / "java").is_file():
@@ -56,25 +49,6 @@ class Suite:
     python_module: str | None = None
 
 
-OFFLINE_CORE = (
-    "CameraAdapterManager.java",
-    "CameraChannel.java",
-    "CameraFrameContract.java",
-    "EndstopManager.java",
-    "ForkServoManager.java",
-    "HardwareContracts.java",
-    "IrSensorManager.java",
-    "LiftingSequenceConfig.java",
-    "LiftingSequenceConfigLoader.java",
-    "FieldBlueConfig.java",
-    "FieldBlueConfigLoader.java",
-    "Alliance.java",
-    "LiftingSequenceStateMachine.java",
-    "PiCdcPacket.java",
-    "ReleaseBackoutSensorManager.java",
-    "StepperElevatorManager.java",
-)
-
 SUITES: tuple[Suite, ...] = (
     Suite(
         "localizer-math",
@@ -84,72 +58,16 @@ SUITES: tuple[Suite, ...] = (
         sources=("test/LocalizerMathTest.java",),
     ),
     Suite(
-        "multi-target-camera",
+        "draw-path",
         "java_offline",
-        "Multi-target temporal filter scenarios",
-        main_class="org.firstinspires.ftc.teamcode.test.MultiTargetCameraTest",
-        sources=("test/MultiTargetCameraTest.java",),
-    ),
-    Suite(
-        "pi-cdc-packet",
-        "java_offline",
-        "NDJSON packet parse/validate + dxPx conversion",
-        main_class="org.firstinspires.ftc.teamcode.test.PiCdcPacketTest",
+        "Draw path JSON parse, mm→cm, pen transition order",
+        main_class="org.firstinspires.ftc.teamcode.test.DrawPathTest",
         sources=(
-            "core/PiCdcPacket.java",
-            "core/CameraFrameContract.java",
-            "core/CameraChannel.java",
-            "test/PiCdcPacketTest.java",
-        ),
-    ),
-    Suite(
-        "lifting-hardware",
-        "java_offline",
-        "Manager contracts + Pi5 payload decode gates",
-        main_class="org.firstinspires.ftc.teamcode.test.LiftingHardwareManagerTest",
-        sources=tuple(f"core/{name}" for name in OFFLINE_CORE) + ("test/LiftingHardwareManagerTest.java",),
-    ),
-    Suite(
-        "lifting-config",
-        "java_offline",
-        "Strict JSON config loader validation",
-        main_class="org.firstinspires.ftc.teamcode.test.LiftingSequenceConfigTest",
-        sources=(
-            "core/LiftingSequenceConfig.java",
-            "core/LiftingSequenceConfigLoader.java",
-            "core/FieldBlueConfig.java",
-            "core/FieldBlueConfigLoader.java",
-            "core/Alliance.java",
-            "test/LiftingSequenceConfigTest.java",
-        ),
-    ),
-    Suite(
-        "field-blue",
-        "java_offline",
-        "Blue field coordinates + red factory slot reversal",
-        main_class="org.firstinspires.ftc.teamcode.test.FieldBlueConfigTest",
-        sources=(
-            "core/LiftingSequenceConfig.java",
-            "core/LiftingSequenceConfigLoader.java",
-            "core/FieldBlueConfig.java",
-            "core/FieldBlueConfigLoader.java",
-            "core/Alliance.java",
-            "test/FieldBlueConfigTest.java",
-        ),
-    ),
-    Suite(
-        "lifting-sequence",
-        "java_offline",
-        "Pickup state machine safety and serial flow",
-        main_class="org.firstinspires.ftc.teamcode.test.LiftingSequenceTest",
-        sources=(
-            "core/LiftingSequenceConfig.java",
-            "core/LiftingSequenceConfigLoader.java",
-            "core/FieldBlueConfig.java",
-            "core/FieldBlueConfigLoader.java",
-            "core/Alliance.java",
-            "core/LiftingSequenceStateMachine.java",
-            "test/LiftingSequenceTest.java",
+            "pen/DrawPathConfig.java",
+            "pen/DrawPathLoader.java",
+            "pen/RobotConfig.java",
+            "pen/RobotConfigLoader.java",
+            "test/DrawPathTest.java",
         ),
     ),
     Suite(
@@ -163,30 +81,6 @@ SUITES: tuple[Suite, ...] = (
         "java_ftc",
         "Mecanum kinematics + simulated goToPosition (needs FTC SDK)",
         main_class="org.firstinspires.ftc.teamcode.test.MecanumDriveTest",
-    ),
-    Suite(
-        "python-cdc",
-        "python",
-        "USB CDC JSON packet shape for Hub receiver",
-        python_module="block_detected_for_pi.test_cdc",
-    ),
-    Suite(
-        "python-monitor",
-        "python",
-        "CLI monitor snapshot thresholds and render smoke",
-        python_module="block_detected_for_pi.test_monitor",
-    ),
-    Suite(
-        "python-model-benchmark",
-        "python",
-        "Model benchmark metrics, gates, and ONNX compatibility",
-        python_module="block_detected_for_pi.test_model_benchmark",
-    ),
-    Suite(
-        "python-stream",
-        "python",
-        "MJPEG overlay and stream server smoke",
-        python_module="block_detected_for_pi.test_stream",
     ),
 )
 
@@ -226,7 +120,13 @@ def _print_header(title: str) -> None:
 def _resolve_sources(suite: Suite) -> list[Path]:
     paths: list[Path] = []
     for rel in suite.sources:
-        if rel.startswith("core/"):
+        if rel.startswith("pen/"):
+            paths.append(CORE_PEN / rel.removeprefix("pen/"))
+        elif rel.startswith("drive/"):
+            paths.append(CORE_DRIVE / rel.removeprefix("drive/"))
+        elif rel.startswith("odometry/"):
+            paths.append(CORE_ODOMETRY / rel.removeprefix("odometry/"))
+        elif rel.startswith("core/"):
             paths.append(CORE / rel.removeprefix("core/"))
         elif rel.startswith("test/"):
             paths.append(TEST / rel.removeprefix("test/"))
@@ -293,7 +193,6 @@ def _ftc_classpath() -> list[Path]:
     for lib_dir in lib_dirs:
         if lib_dir.is_dir():
             entries.extend(lib_dir.glob("*.jar"))
-    # De-duplicate while preserving order.
     seen: set[str] = set()
     unique: list[Path] = []
     for entry in entries:
@@ -329,27 +228,9 @@ def _run_ftc_suite(suite: Suite, *, gradle_compiled: bool) -> tuple[bool, str]:
     return True, output
 
 
-def _run_python_suite(suite: Suite) -> tuple[bool, str]:
-    python = _which("python3") or _which("python")
-    if not python:
-        return False, "python3 not found"
-    env = {"PYTHONPATH": str(ROOT)}
-    if suite.python_module:
-        result = _run(
-            [python, "-m", "unittest", suite.python_module, "-v"],
-            env=env,
-        )
-    else:
-        return False, "python suite missing module"
-    output = (result.stdout + result.stderr).strip()
-    if result.returncode != 0:
-        return False, output or "python unittest failed"
-    return True, output
-
-
 def run_suite(suite: Suite, *, gradle_compiled: bool = False) -> tuple[bool, str]:
     if suite.kind == "python":
-        return _run_python_suite(suite)
+        return False, "no python suites configured"
     if suite.kind == "java_ftc":
         ok, output = _run_ftc_suite(suite, gradle_compiled=gradle_compiled)
         return ok, output
@@ -369,8 +250,8 @@ def list_suites() -> None:
         print(f"  {suite.name:<22} [{suite.kind:<12}] {suite.description}")
     print("\nRun examples:")
     print("  python run_tests.py --all")
-    print("  python run_tests.py --suite lifting-hardware")
-    print("  python run_tests.py --java --python")
+    print("  python run_tests.py --suite draw-path")
+    print("  python run_tests.py --suite localizer-math --suite mecanum")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -380,7 +261,6 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--list", action="store_true", help="list suites and exit")
     parser.add_argument("--suite", action="append", default=[], help="run one or more named suites")
     parser.add_argument("--java", action="store_true", help="run all Java suites")
-    parser.add_argument("--python", action="store_true", help="run all Python suites")
     parser.add_argument("--offline", action="store_true", help="run javac-only suites")
     parser.add_argument("--gradle", action="store_true", help="only compile TeamCode with Gradle")
     parser.add_argument("--verbose", action="store_true", help="print full suite output")
@@ -410,8 +290,6 @@ def main(argv: list[str] | None = None) -> int:
             return 2
     elif args.java:
         selected = [suite for suite in SUITES if suite.kind.startswith("java")]
-    elif args.python:
-        selected = [suite for suite in SUITES if suite.kind == "python"]
     elif args.offline:
         selected = [suite for suite in SUITES if suite.kind == "java_offline"]
     else:

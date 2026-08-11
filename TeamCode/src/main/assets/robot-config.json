@@ -1,42 +1,15 @@
 {
   "version": 1,
-  "fork": {
-    "placeLeft": 0.05,
-    "placeRight": 0,
-    "holdLeft": 0.45,
-    "holdRight": 0.45
-  },
-  "elevator": {
-    "stepHighNs": 1,
-    "stepLowNs": 1,
-    "homeSteps": 0,
-    "ready1Steps": 844,
-    "lift1Steps": 1781,
-    "ready2Steps": 4688,
-    "lift2Steps": 5625,
-    "stepperDirInverted": true
-  },
-  "sensors": {
-    "endstopActiveLow": true,
-    "irActiveLow": true,
-    "irDebounceNs": 100000000,
-    "sensorStaleNs": 250000000,
-    "encoderFreshnessNs": 250000000
-  },
-  "camera": {
-    "frameWidth": 640,
-    "frameHeight": 480
+  "pen": {
+    "deviceName": "penServo",
+    "upPosition": 0.05,
+    "downPosition": 0.45
   },
   "motion": {
-    "approachSpeed": 0.1,
-    "positionToleranceCm": 1.0,
-    "headingToleranceDeg": 3.0,
-    "releaseBackOutCm": 20.0,
-    "noProgressCm": 0.1
-  },
-  "sequence": {
-    "maxRetries": 2,
-    "settleCycles": 3,
-    "totalCycles": 6
+    "drivePower": 0.20,
+    "positionToleranceMm": 3.0,
+    "headingToleranceDeg": 1.0,
+    "headingHoldPower": 0.35,
+    "settleCycles": 2
   }
 }

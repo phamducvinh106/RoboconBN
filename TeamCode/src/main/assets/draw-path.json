@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "name": "demo-square",
+  "startPose": { "xMm": 0, "yMm": 0, "headingDeg": 0 },
+  "drawingHeadingDeg": 0,
+  "waypoints": [
+    { "xMm": 0, "yMm": 0, "penDown": false },
+    { "xMm": 100, "yMm": 0, "penDown": true },
+    { "xMm": 100, "yMm": 100, "penDown": true },
+    { "xMm": 0, "yMm": 100, "penDown": true },
+    { "xMm": 0, "yMm": 0, "penDown": true }
+  ]
+}

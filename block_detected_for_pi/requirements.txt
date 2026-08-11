@@ -1,5 +1,0 @@
-numpy>=1.24
-opencv-python-headless>=4.8
-onnxruntime>=1.22.0
-pyserial>=3.5
-rich>=13.7

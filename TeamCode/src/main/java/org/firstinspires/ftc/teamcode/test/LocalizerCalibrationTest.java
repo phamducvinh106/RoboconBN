@@ -1,6 +1,6 @@
 package org.firstinspires.ftc.teamcode.test;
 
-import org.firstinspires.ftc.teamcode.core.Localizer;
+import org.firstinspires.ftc.teamcode.core.odometry.Localizer;
 
 /** Executable offline guards for the Localizer calibration contract. */
 public final class LocalizerCalibrationTest {

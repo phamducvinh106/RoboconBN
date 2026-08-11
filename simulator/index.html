@@ -137,6 +137,82 @@
       width: 0%;
       transition: width 0.1s linear;
     }
+    .panel {
+      border-top: 1px solid var(--border);
+      padding-top: 12px;
+    }
+    .panel h2 {
+      font-size: 0.78rem;
+      color: var(--muted);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 8px;
+    }
+    .pose-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .pose-grid label { gap: 3px; }
+    input[type="number"] {
+      width: 100%;
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: 6px 7px;
+      border-radius: 4px;
+      font: 0.8rem "Consolas", monospace;
+    }
+    input[type="number"]:invalid { border-color: var(--red); }
+    .panel-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .panel-message { min-height: 1.1em; color: var(--muted); font-size: 0.72rem; margin-top: 6px; }
+    .panel-message.error { color: var(--red); }
+    .fork-grid { display: grid; gap: 5px; font-size: 0.78rem; }
+    .fork-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 6px;
+      padding: 6px 8px;
+      border-left: 2px solid transparent;
+      background: var(--bg);
+      font-family: "Consolas", monospace;
+    }
+    .fork-row.active { border-left-color: var(--accent); color: #fff; }
+    .fork-row b { font-family: "Segoe UI", system-ui, sans-serif; }
+    .timeline-summary { color: var(--muted); font-size: 0.72rem; margin-bottom: 7px; }
+    .timeline-list { display: grid; gap: 3px; max-height: 260px; overflow-y: auto; }
+    .timeline-row {
+      display: grid;
+      grid-template-columns: 34px 1fr auto;
+      gap: 6px;
+      align-items: center;
+      width: 100%;
+      padding: 5px 6px;
+      text-align: left;
+      background: var(--bg);
+      border: 1px solid transparent;
+      border-radius: 4px;
+      color: var(--text);
+      font-size: 0.72rem;
+    }
+    .timeline-row:hover, .timeline-row.active { border-color: var(--accent); background: #202d40; }
+    .timeline-row small { color: var(--muted); font-family: "Consolas", monospace; }
+    .timeline-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #canvas-tooltip {
+      position: absolute;
+      display: none;
+      z-index: 2;
+      pointer-events: none;
+      padding: 7px 9px;
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      background: rgba(15, 20, 25, 0.94);
+      color: var(--text);
+      font: 0.72rem "Consolas", monospace;
+      white-space: pre;
+    }
   </style>
 </head>
 <body>
@@ -145,7 +221,7 @@
     <span>BLUE alliance · kinematic viewer · dữ liệu từ field-blue.json + robot-config.json</span>
   </header>
   <main>
-    <div id="canvas-wrap"><canvas id="field"></canvas></div>
+    <div id="canvas-wrap"><canvas id="field"></canvas><div id="canvas-tooltip"></div></div>
     <aside>
       <div id="load-error"></div>
       <div class="controls">
@@ -173,8 +249,43 @@
           <option value="04">04</option>
         </select>
       </label>
+      <label>Chế độ khối
+        <select id="block-mode">
+          <option value="fixed">Manual</option>
+          <option value="random">Random 01–04 khi rebuild</option>
+        </select>
+      </label>
       <div class="progress-bar"><div id="progress"></div></div>
       <div class="stat-grid" id="stats"></div>
+      <section class="panel">
+        <h2>Named pose</h2>
+        <select id="pose-select"></select>
+        <div class="pose-grid">
+          <label>X (cm)<input id="pose-x" type="number" step="0.01" required></label>
+          <label>Y (cm)<input id="pose-y" type="number" step="0.01" required></label>
+          <label>Heading<input id="pose-heading" type="number" step="0.1" required></label>
+        </div>
+        <div class="panel-actions">
+          <button id="btn-pose-apply" class="primary">Apply</button>
+          <button id="btn-pose-reset">Reset</button>
+          <button id="btn-pose-export">Export</button>
+        </div>
+        <div id="pose-message" class="panel-message"></div>
+      </section>
+      <section class="panel">
+        <h2>Fork function</h2>
+        <div id="fork-active" class="timeline-summary">Current: —</div>
+        <div class="fork-grid">
+          <div class="fork-row"><b>Pose</b><b>Left</b><b>Right</b></div>
+          <div id="fork-place-row" class="fork-row"><b>PLACE</b><span id="fork-place-left">—</span><span id="fork-place-right">—</span></div>
+          <div id="fork-hold-row" class="fork-row"><b>HOLD</b><span id="fork-hold-left">—</span><span id="fork-hold-right">—</span></div>
+        </div>
+      </section>
+      <section class="panel">
+        <h2>Timeline</h2>
+        <div id="timeline-summary" class="timeline-summary"></div>
+        <div id="timeline-list" class="timeline-list"></div>
+      </section>
       <div class="legend">
         <div><i style="background:#3d9eff"></i> Robot</div>
         <div><i style="background:#f5a623"></i> Kệ (shelf)</div>
@@ -200,8 +311,17 @@
   const statsEl = document.getElementById("stats");
   const progressEl = document.getElementById("progress");
   const loadErrorEl = document.getElementById("load-error");
+  const poseSelectEl = document.getElementById("pose-select");
+  const poseXEl = document.getElementById("pose-x");
+  const poseYEl = document.getElementById("pose-y");
+  const poseHeadingEl = document.getElementById("pose-heading");
+  const poseMessageEl = document.getElementById("pose-message");
+  const timelineSummaryEl = document.getElementById("timeline-summary");
+  const timelineListEl = document.getElementById("timeline-list");
+  const canvasTooltipEl = document.getElementById("canvas-tooltip");
 
   let fieldData = null;
+  let originalFieldData = null;
   let robotData = null;
   let fieldModel = null;
   let timeline = [];
@@ -210,6 +330,8 @@
   let playing = false;
   let lastFrame = 0;
   let trail = [];
+  let selectedPoseKey = "points.placeAtFactory";
+  let timingDiagnostics = [];
   let view = { minX: 0, minY: 0, maxX: 140, maxY: 180, pad: 20 };
 
   // ── Config parsing ──────────────────────────────────────────────
@@ -515,6 +637,145 @@
     return { segments, totalDuration: t };
   }
 
+  function normalizeTimeline(segments) {
+    let cursor = 0;
+    const diagnostics = [];
+    segments.forEach((seg, index) => {
+      const rawDuration = Number(seg.duration);
+      const duration = Number.isFinite(rawDuration) && rawDuration > 0 ? rawDuration : INSTANT_S;
+      if (duration !== rawDuration) diagnostics.push(`segment ${index}: duration fixed`);
+      if (!Number.isFinite(seg.start) || Math.abs(seg.start - cursor) > 0.0001) {
+        diagnostics.push(`segment ${index}: start normalized`);
+      }
+      seg.index = index;
+      seg.duration = duration;
+      seg.start = cursor;
+      seg.end = cursor + duration;
+      cursor = seg.end;
+    });
+    return { segments, totalDuration: cursor, diagnostics };
+  }
+
+  function poseMap() {
+    const poses = {
+      "points.placeAtFactory": fieldModel.placeAtFactory,
+      "points.shelfApproach": fieldModel.shelfApproach,
+      "points.retreat": fieldModel.retreat,
+      "shelves.fac1": fieldModel.shelves[0],
+      "shelves.fac2": fieldModel.shelves[1],
+      "shelves.fac3": fieldModel.shelves[2],
+    };
+    BLOCK_CODES.forEach((code) => {
+      poses[`factories.${code}.near`] = fieldModel.factories[code].near;
+      poses[`factories.${code}.placement`] = fieldModel.factories[code].placement;
+    });
+    return poses;
+  }
+
+  function namedPoses() {
+    return Object.entries(poseMap()).map(([key, pose]) => ({
+      key,
+      label: key.replace("points.", "").replace("shelves.", "").replace("factories.", "factory "),
+      pose,
+    }));
+  }
+
+  function syncFieldDataFromModel() {
+    fieldData.points.placeAtFactory = { ...fieldModel.placeAtFactory };
+    fieldData.points.shelfApproach = { ...fieldModel.shelfApproach };
+    fieldData.points.retreat = { ...fieldModel.retreat };
+    fieldModel.shelves.forEach((pose, index) => {
+      fieldData.shelves[`fac${index + 1}`] = { ...pose };
+    });
+    BLOCK_CODES.forEach((code, index) => {
+      fieldData.factories[index].near = { ...fieldModel.factories[code].near };
+      fieldData.factories[index].placement = { ...fieldModel.factories[code].placement };
+    });
+  }
+
+  function setPoseMessage(message, error = false) {
+    poseMessageEl.textContent = message;
+    poseMessageEl.className = error ? "panel-message error" : "panel-message";
+  }
+
+  function renderPoseOptions() {
+    poseSelectEl.innerHTML = "";
+    namedPoses().forEach(({ key, label }) => {
+      const option = document.createElement("option");
+      option.value = key;
+      option.textContent = label;
+      poseSelectEl.appendChild(option);
+    });
+    if (!poseMap()[selectedPoseKey]) selectedPoseKey = "points.placeAtFactory";
+    poseSelectEl.value = selectedPoseKey;
+    selectPose(selectedPoseKey);
+  }
+
+  function selectPose(key) {
+    const pose = poseMap()[key];
+    if (!pose) return;
+    selectedPoseKey = key;
+    poseSelectEl.value = key;
+    poseXEl.value = pose.x.toFixed(2);
+    poseYEl.value = pose.y.toFixed(2);
+    poseHeadingEl.value = pose.heading.toFixed(1);
+  }
+
+  function readPoseInput(input) {
+    if (!input.value.trim()) return null;
+    const value = Number(input.value);
+    return Number.isFinite(value) ? value : null;
+  }
+
+  function applyPoseEdit() {
+    const pose = poseMap()[selectedPoseKey];
+    const values = [readPoseInput(poseXEl), readPoseInput(poseYEl), readPoseInput(poseHeadingEl)];
+    if (!pose || values.some((value) => value === null)) {
+      setPoseMessage("X, Y, heading phải là số hợp lệ", true);
+      return;
+    }
+    [pose.x, pose.y, pose.heading] = values;
+    syncFieldDataFromModel();
+    computeViewBounds();
+    rebuildTimeline();
+    setPoseMessage(`Applied ${selectedPoseKey}`);
+  }
+
+  function resetPoseEdits() {
+    fieldData = JSON.parse(JSON.stringify(originalFieldData));
+    fieldModel = buildFieldModel(fieldData, robotData);
+    computeViewBounds();
+    renderPoseOptions();
+    rebuildTimeline();
+    setPoseMessage("Pose data reset");
+  }
+
+  function exportFieldConfig() {
+    syncFieldDataFromModel();
+    const blob = new Blob([JSON.stringify(fieldData, null, 2) + "\n"], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "field-blue-edited.json";
+    link.click();
+    URL.revokeObjectURL(url);
+    setPoseMessage("Exported field-blue-edited.json");
+  }
+
+  function findNamedPoseAt(x, y, w, h) {
+    let closest = null;
+    let distance = Infinity;
+    namedPoses().forEach((named) => {
+      const point = fieldToCanvas(named.pose.x, named.pose.y, w, h);
+      const d = Math.hypot(point.cx - x, point.cy - y);
+      if (d <= 12 && d < distance) {
+        closest = named;
+        distance = d;
+      }
+    });
+    return closest;
+  }
+
   // ── Simulation state at time t ────────────────────────────────
 
   function sampleAtTime(t) {
@@ -722,6 +983,44 @@
     ctx.setLineDash([]);
   }
 
+  function renderTimeline() {
+    timelineListEl.innerHTML = "";
+    timelineSummaryEl.textContent = `${timeline.length} segments · ${totalDuration.toFixed(1)}s · ${timingDiagnostics.length ? timingDiagnostics.join("; ") : "timing contiguous"}`;
+    timeline.forEach((seg, index) => {
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "timeline-row";
+      row.dataset.index = index;
+      const order = document.createElement("small");
+      order.textContent = String(index + 1).padStart(3, "0");
+      const state = document.createElement("span");
+      state.textContent = seg.state;
+      const duration = document.createElement("small");
+      duration.textContent = `${seg.duration.toFixed(2)}s`;
+      row.append(order, state, duration);
+      row.addEventListener("click", () => seekToSegment(index));
+      timelineListEl.appendChild(row);
+    });
+  }
+
+  function updateTimeline(sample) {
+    const activeIndex = sample?.segment?.index ?? -1;
+    Array.from(timelineListEl.children).forEach((row) => {
+      row.classList.toggle("active", Number(row.dataset.index) === activeIndex);
+    });
+  }
+
+  function updateForkPanel(sample) {
+    const fork = robotData?.fork || {};
+    document.getElementById("fork-place-left").textContent = Number(fork.placeLeft ?? 0).toFixed(2);
+    document.getElementById("fork-place-right").textContent = Number(fork.placeRight ?? 0).toFixed(2);
+    document.getElementById("fork-hold-left").textContent = Number(fork.holdLeft ?? 0).toFixed(2);
+    document.getElementById("fork-hold-right").textContent = Number(fork.holdRight ?? 0).toFixed(2);
+    document.getElementById("fork-place-row").classList.toggle("active", sample?.fork === "PLACE");
+    document.getElementById("fork-hold-row").classList.toggle("active", sample?.fork === "HOLD");
+    document.getElementById("fork-active").textContent = `Current: ${sample?.fork || "—"}`;
+  }
+
   function draw(w, h) {
     w = w || canvas.clientWidth;
     h = h || canvas.clientHeight;
@@ -735,6 +1034,7 @@
     });
     BLOCK_CODES.forEach((code) => drawFactorySlot(fieldModel.factories[code], code, w, h));
     drawMarker(fieldModel.placeAtFactory, w, h, "#8b9cb3", "start", 5);
+    drawMarker(fieldModel.shelfApproach, w, h, "#8b9cb3", "shelfApproach", 4);
     drawMarker(fieldModel.retreat, w, h, "#8b9cb3", "retreat", 4);
 
     drawTrail(w, h);
@@ -743,6 +1043,8 @@
       drawTarget(sample.target, w, h);
       drawRobot(sample.pose, w, h, sample.fork, sample.irLeft, sample.irRight);
       updateStats(sample);
+      updateTimeline(sample);
+      updateForkPanel(sample);
     }
     progressEl.style.width = totalDuration > 0 ? (simTime / totalDuration * 100) + "%" : "0%";
   }
@@ -777,15 +1079,26 @@
   // ── Playback controls ─────────────────────────────────────────
 
   function rebuildTimeline() {
-    const left = document.getElementById("left-type").value;
-    const right = document.getElementById("right-type").value;
+    const leftTypeEl = document.getElementById("left-type");
+    const rightTypeEl = document.getElementById("right-type");
+    let left = leftTypeEl.value;
+    let right = rightTypeEl.value;
+    if (document.getElementById("block-mode").value === "random") {
+      left = BLOCK_CODES[Math.floor(Math.random() * BLOCK_CODES.length)];
+      right = BLOCK_CODES[Math.floor(Math.random() * BLOCK_CODES.length)];
+      leftTypeEl.value = left;
+      rightTypeEl.value = right;
+    }
     const built = buildTimeline(fieldModel, left, right);
-    timeline = built.segments;
-    totalDuration = built.totalDuration;
+    const normalized = normalizeTimeline(built.segments);
+    timeline = normalized.segments;
+    totalDuration = normalized.totalDuration;
+    timingDiagnostics = normalized.diagnostics;
     simTime = 0;
     trail = [];
     playing = false;
     document.getElementById("btn-play").textContent = "▶ Play";
+    renderTimeline();
     draw();
   }
 
@@ -802,6 +1115,16 @@
     const nextBoundary = timeline.find((s) => s.start > simTime);
     if (nextBoundary) simTime = nextBoundary.start;
     else simTime = totalDuration;
+    draw();
+  }
+
+  function seekToSegment(index) {
+    const segment = timeline[index];
+    if (!segment) return;
+    simTime = segment.start;
+    trail = [];
+    playing = false;
+    document.getElementById("btn-play").textContent = "▶ Play";
     draw();
   }
 
@@ -838,7 +1161,9 @@
     });
 
     const built = buildTimeline(fieldModel, "01", "02");
-    console.assert(built.segments.length > 0, "timeline empty");
+    const normalized = normalizeTimeline(built.segments);
+    console.assert(normalized.segments.length > 0, "timeline empty");
+    console.assert(normalized.totalDuration > 0, "timeline duration invalid");
     const cycleCompletes = built.segments.filter((s) => s.state === "CYCLE_COMPLETE");
     console.assert(cycleCompletes.length === 6, "expected 6 cycles, got " + cycleCompletes.length);
     const safeStop = built.segments.find((s) => s.state === "SAFE_STOP");
@@ -852,6 +1177,8 @@
 
     const sample = sampleAtTime(0);
     console.assert(sample && sample.state === "HOMING", "should start at HOMING");
+    console.assert(namedPoses().length === 14, "expected 14 named poses");
+    console.assert(robotData.fork && robotData.fork.holdLeft !== undefined, "missing fork config");
   }
 
   // ── Init ──────────────────────────────────────────────────────
@@ -864,6 +1191,7 @@
       ]);
       if (!fieldRes.ok || !robotRes.ok) throw new Error("Không tải được JSON config");
       fieldData = await fieldRes.json();
+      originalFieldData = JSON.parse(JSON.stringify(fieldData));
       robotData = await robotRes.json();
       fieldModel = buildFieldModel(fieldData, robotData);
       if (!fieldModel.calibrated) {
@@ -871,7 +1199,9 @@
         loadErrorEl.style.display = "block";
       }
       computeViewBounds();
+      renderPoseOptions();
       rebuildTimeline();
+      renderForkPanel();
       runSelfChecks();
     } catch (e) {
       loadErrorEl.textContent = "Lỗi: " + e.message
@@ -897,7 +1227,47 @@
   });
   document.getElementById("left-type").addEventListener("change", rebuildTimeline);
   document.getElementById("right-type").addEventListener("change", rebuildTimeline);
+  document.getElementById("block-mode").addEventListener("change", rebuildTimeline);
+  poseSelectEl.addEventListener("change", (event) => selectPose(event.target.value));
+  document.getElementById("btn-pose-apply").addEventListener("click", applyPoseEdit);
+  document.getElementById("btn-pose-reset").addEventListener("click", resetPoseEdits);
+  document.getElementById("btn-pose-export").addEventListener("click", exportFieldConfig);
+  canvas.addEventListener("mousemove", (event) => {
+    if (!fieldModel) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    const named = findNamedPoseAt(x, y, canvas.clientWidth, canvas.clientHeight);
+    canvas.style.cursor = named ? "pointer" : "default";
+    if (!named) {
+      canvasTooltipEl.style.display = "none";
+      return;
+    }
+    canvasTooltipEl.textContent = `${named.label}\nX ${named.pose.x.toFixed(2)} · Y ${named.pose.y.toFixed(2)} · H ${named.pose.heading.toFixed(1)}°`;
+    canvasTooltipEl.style.display = "block";
+    const wrapRect = document.getElementById("canvas-wrap").getBoundingClientRect();
+    const left = event.clientX - wrapRect.left + 12;
+    const top = event.clientY - wrapRect.top + 12;
+    canvasTooltipEl.style.left = `${Math.min(left, canvas.clientWidth - canvasTooltipEl.offsetWidth - 8)}px`;
+    canvasTooltipEl.style.top = `${Math.min(top, canvas.clientHeight - canvasTooltipEl.offsetHeight - 8)}px`;
+  });
+  canvas.addEventListener("mouseleave", () => {
+    canvas.style.cursor = "default";
+    canvasTooltipEl.style.display = "none";
+  });
+  canvas.addEventListener("click", (event) => {
+    const rect = canvas.getBoundingClientRect();
+    const named = findNamedPoseAt(event.clientX - rect.left, event.clientY - rect.top, canvas.clientWidth, canvas.clientHeight);
+    if (named) {
+      selectPose(named.key);
+      setPoseMessage(`Editing ${named.key}`);
+    }
+  });
   window.addEventListener("resize", resizeCanvas);
+
+  function renderForkPanel() {
+    updateForkPanel(sampleAtTime(simTime));
+  }
 
   init();
 })();
